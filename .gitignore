@@ -1,0 +1,20 @@
+.env
+.env.*
+!.env.example
+*.log
+
+# Local data mounts (OSM, Overpass DB, DEM tiles)
+osm/
+overpass/
+overpass-us/
+terrain/
+
+# OS-specific
+.DS_Store
+
+# Python caches (for mock-uss / terrain-api development)
+__pycache__/
+*.py[cod]
+
+# Node caches (if you run tooling locally inside submodules)
+node_modules/

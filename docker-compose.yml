@@ -1,0 +1,338 @@
+# Unified Docker Compose for ATC UTM System
+# Runs all services: atc-frontend, atc-blender (Flight Blender), atc-drone
+
+services:
+  # ===========================================
+  # ATC Frontend (Control Center UI)
+  # ===========================================
+  atc-frontend:
+    build: ./atc-frontend
+    container_name: atc-frontend
+    ports:
+      - "${ATC_FRONTEND_PORT:-5050}:5050"
+    environment:
+      - NODE_ENV=${ATC_FRONTEND_NODE_ENV:-development}
+      - PORT=5050
+      - ATC_SERVER_URL=http://atc-drone:3000
+      - ATC_ADMIN_TOKEN=${ATC_ADMIN_TOKEN:-change-me-admin}
+      - ATC_REGISTRATION_TOKEN=${ATC_REGISTRATION_TOKEN:-change-me-registration-token}
+      - ATC_WS_TOKEN=${ATC_WS_TOKEN:-change-me-ws-token}
+      - BLENDER_URL=http://flight-blender:8000
+      - BLENDER_AUTH_TOKEN=${BLENDER_AUTH_TOKEN:-}
+    depends_on:
+      - atc-drone
+    networks:
+      - interop_ecosystem_network
+
+  # ===========================================
+  # ATC Drone Server (Rust Backend)
+  # ===========================================
+  atc-drone:
+    build: ./atc-drone
+    container_name: atc-drone
+    ports:
+      - "${ATC_SERVER_PORT:-3000}:3000"
+    environment:
+      - ATC_ENV=${ATC_ENV:-development}
+      - RUST_LOG=${ATC_SERVER_RUST_LOG:-info}
+      - BLENDER_URL=http://flight-blender:8000
+      - BLENDER_AUTH_TOKEN=${BLENDER_AUTH_TOKEN:-}
+      - ATC_ADMIN_TOKEN=${ATC_ADMIN_TOKEN:-change-me-admin}
+      - ATC_REGISTRATION_TOKEN=${ATC_REGISTRATION_TOKEN:-change-me-registration-token}
+      - ATC_WS_TOKEN=${ATC_WS_TOKEN:-change-me-ws-token}
+      - ATC_REQUIRE_WS_TOKEN=${ATC_REQUIRE_WS_TOKEN:-true}
+      - ATC_COMPLIANCE_OVERPASS_URL=http://overpass/api/interpreter
+      - ATC_TERRAIN_PROVIDER_URL=http://terrain-api:8081/v1/elevation
+      - ATC_TERRAIN_USE_POST=true
+      - ATC_TERRAIN_REQUIRE=true
+      - ATC_TERRAIN_MAX_POINTS_PER_REQUEST=5000
+      - ATC_TERRAIN_REQUEST_MIN_INTERVAL_MS=${ATC_TERRAIN_REQUEST_MIN_INTERVAL_MS:-0}
+      - ATC_ROUTE_PLANNER_REQUIRE_OBSTACLES=true
+      - ATC_ROUTE_PLANNER_ALLOW_TRUNCATED_OBSTACLES=true
+      - ATC_COMPLIANCE_MAX_OVERPASS_ELEMENTS=50000
+      - ATC_COMPLIANCE_OVERPASS_TIMEOUT_S=60
+    volumes:
+      - atc_drone_data:/app/data
+    networks:
+      - interop_ecosystem_network
+
+  # ===========================================
+  # Local Overpass API (OSM data for routing)
+  # ===========================================
+  overpass:
+    image: wiktorn/overpass-api:latest
+    container_name: overpass
+    environment:
+      - OVERPASS_MODE=init
+      - OVERPASS_META=no
+      # Default: seed Overpass with the Geofabrik US extract (download via tools/fetch_nationwide_data.py).
+      - OVERPASS_PLANET_URL=file:///osm/${ATC_OSM_PBF:-us-latest.osm.pbf}
+      - OVERPASS_DIFF_URL=
+      - OVERPASS_COMPRESSION=gz
+      - OVERPASS_RULES_LOAD=10
+      - OVERPASS_UPDATE_SLEEP=3600
+      - OVERPASS_STOP_AFTER_INIT=false
+      - OVERPASS_PLANET_PREPROCESS=rm -f /db/planet.osm.bz2 /db/planet.osm.pbf && cp /osm/${ATC_OSM_PBF:-us-latest.osm.pbf} /db/planet.osm.pbf && osmium cat -o /db/planet.osm.bz2 /db/planet.osm.pbf && rm /db/planet.osm.pbf
+    volumes:
+      - ${ATC_OVERPASS_DB_DIR:-./data/overpass-us}:/db
+      - ${ATC_OSM_DIR:-./data/osm}:/osm:ro
+    ports:
+      - "8086:80"
+    networks:
+      - interop_ecosystem_network
+
+  # ===========================================
+  # Local Terrain API (Copernicus DEM)
+  # ===========================================
+  terrain-api:
+    build: ./terrain-api
+    container_name: terrain-api
+    environment:
+      - TERRAIN_DATA_DIR=/data/terrain
+      - TERRAIN_CACHE_SIZE=8
+    volumes:
+      - ${ATC_TERRAIN_DIR:-./data/terrain/copernicus}:/data/terrain:ro
+    ports:
+      - "8081:8081"
+    networks:
+      - interop_ecosystem_network
+
+  # ===========================================
+  # InterUSS DSS (Local Sandbox)
+  # ===========================================
+  local-dss-crdb:
+    image: cockroachdb/cockroach:v24.1.3
+    container_name: local-dss-crdb
+    restart: unless-stopped
+    # Keep Cockroach memory bounded for laptops/small VMs (stability > throughput for demo).
+    command: start --insecure --listen-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --join=local-dss-crdb:26257 --cache=256MiB --max-sql-memory=256MiB
+    ports:
+      - "26257:26257"
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health?ready=1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    volumes:
+      - dss_crdb_data:/cockroach/cockroach-data
+    networks:
+      - interop_ecosystem_network
+
+  local-dss-crdb-init:
+    image: cockroachdb/cockroach:v24.1.3
+    container_name: local-dss-crdb-init
+    entrypoint: ["/bin/sh", "-lc"]
+    command:
+      - |
+        set -euo pipefail
+        echo "[DSS] Initializing CockroachDB (idempotent)..."
+        for i in $$(seq 1 60); do
+          out="$$(cockroach init --insecure --host=local-dss-crdb:26257 2>&1)" && exit 0
+          echo "$$out" | grep -qi "already been initialized" && exit 0
+          echo "[DSS] init attempt $$i failed: $$out"
+          sleep 2
+        done
+        exit 1
+    depends_on:
+      local-dss-crdb:
+        condition: service_started
+    restart: on-failure
+    networks:
+      - interop_ecosystem_network
+
+  local-dss-rid-bootstrapper:
+    image: interuss/dss:v0.15.0
+    container_name: local-dss-rid-bootstrapper
+    command: /usr/bin/db-manager -schemas_dir=/db-schemas/rid -db_version latest -cockroach_host local-dss-crdb
+    depends_on:
+      local-dss-crdb-init:
+        condition: service_completed_successfully
+    restart: on-failure
+    networks:
+      - interop_ecosystem_network
+
+  local-dss-scd-bootstrapper:
+    image: interuss/dss:v0.15.0
+    container_name: local-dss-scd-bootstrapper
+    command: /usr/bin/db-manager -schemas_dir=/db-schemas/scd -db_version latest -cockroach_host local-dss-crdb
+    depends_on:
+      local-dss-crdb-init:
+        condition: service_completed_successfully
+    restart: on-failure
+    networks:
+      - interop_ecosystem_network
+
+  local-dss-core:
+    image: interuss/dss:v0.15.0
+    container_name: local-dss-core
+    restart: unless-stopped
+    command: >
+      /usr/bin/core-service
+      -cockroach_host local-dss-crdb
+      -public_key_files /var/test-certs/auth2.pem
+      -log_format console
+      -addr :8082
+      -accepted_jwt_audiences localhost,host.docker.internal,local-dss-core
+      -enable_scd
+      -enable_http
+      -locality local_dev
+    ports:
+      - "8082:8082"
+    depends_on:
+      local-dss-rid-bootstrapper:
+        condition: service_completed_successfully
+      local-dss-scd-bootstrapper:
+        condition: service_completed_successfully
+    volumes:
+      - ./interuss-dss/build/test-certs:/var/test-certs:ro
+    networks:
+      - interop_ecosystem_network
+
+  local-dss-dummy-oauth:
+    build:
+      context: ./interuss-dss
+      dockerfile: cmds/dummy-oauth/Dockerfile
+    container_name: local-dss-dummy-oauth
+    command: -private_key_file /var/test-certs/auth2.key
+    ports:
+      - "8085:8085"
+    volumes:
+      - ./interuss-dss/build/test-certs:/var/test-certs:ro
+    networks:
+      - interop_ecosystem_network
+
+  # ===========================================
+  # Flight Blender (UTM Standards)
+  # ===========================================
+  redis-blender:
+    image: "valkey/valkey:latest"
+    command: ["redis-server", "--requirepass", "${BLENDER_REDIS_PASSWORD:-blender_redis}"]
+    container_name: redis-blender
+    expose:
+      - "6379"
+    networks:
+      - interop_ecosystem_network
+
+  db-blender:
+    image: postgres:17
+    container_name: db-blender
+    expose:
+      - "5432"
+    environment:
+      - POSTGRES_USER=${BLENDER_DB_USER:-mydatabaseuser}
+      - POSTGRES_PASSWORD=${BLENDER_DB_PASSWORD:-change-me-blender-db-password}
+      - POSTGRES_DB=${BLENDER_DB_NAME:-mydatabase}
+    volumes:
+      - blender_db_data:/var/lib/postgresql/data
+    networks:
+      - interop_ecosystem_network
+
+  flight-blender:
+    build: ./atc-blender
+    container_name: flight-blender
+    ports:
+      - "8000:8000"
+    environment:
+      - SECRET_KEY=${BLENDER_SECRET_KEY:-change-me-flight-blender-secret-key}
+      - IS_DEBUG=${BLENDER_IS_DEBUG:-1}
+      - BYPASS_AUTH_TOKEN_VERIFICATION=${BLENDER_BYPASS_AUTH_TOKEN_VERIFICATION:-1}
+      - DISABLE_JSON_LOGGING=${BLENDER_DISABLE_JSON_LOGGING:-1}
+      - ENABLE_CONFORMANCE_MONITORING=${BLENDER_ENABLE_CONFORMANCE_MONITORING:-1}
+      - USSP_NETWORK_ENABLED=${BLENDER_USSP_NETWORK_ENABLED:-1}
+      - DSS_BASE_URL=http://local-dss-core:8082/
+      - DSS_AUTH_URL=http://local-dss-dummy-oauth:8085
+      - DSS_AUTH_TOKEN_ENDPOINT=/token
+      - DSS_SELF_AUDIENCE=localhost
+      - AUTH_DSS_CLIENT_ID=${DSS_CLIENT_ID:-local-uss-1}
+      - AUTH_DSS_CLIENT_SECRET=${DSS_CLIENT_SECRET:-change-me-dss-client-secret}
+      - RID_FALLBACK_USS_URLS=
+      - REDIS_HOST=redis-blender
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${BLENDER_REDIS_PASSWORD:-blender_redis}
+      - REDIS_BROKER_URL=redis://:${BLENDER_REDIS_PASSWORD:-blender_redis}@redis-blender:6379
+      - HEARTBEAT_RATE_SECS=2
+      - FLIGHT_SPOTLIGHT_URL=http://atc-frontend:5050
+      - FLIGHTBLENDER_FQDN=http://localhost:8000
+      - DATABASE_URL=postgres://${BLENDER_DB_USER:-mydatabaseuser}:${BLENDER_DB_PASSWORD:-change-me-blender-db-password}@db-blender:5432/${BLENDER_DB_NAME:-mydatabase}
+      - POSTGRES_USER=${BLENDER_DB_USER:-mydatabaseuser}
+      - POSTGRES_PASSWORD=${BLENDER_DB_PASSWORD:-change-me-blender-db-password}
+      - POSTGRES_DB=${BLENDER_DB_NAME:-mydatabase}
+      - POSTGRES_HOST=db-blender
+      - POSTGRES_PORT=5432
+    command: ./entrypoints/no-database/entrypoint.sh
+    depends_on:
+      - redis-blender
+      - db-blender
+      - local-dss-core
+      - local-dss-dummy-oauth
+    volumes:
+      - ./atc-blender:/app
+      - blender_venv:/app/.venv
+    networks:
+      - interop_ecosystem_network
+
+  flight-blender-celery:
+    build: ./atc-blender
+    container_name: flight-blender-worker
+    restart: unless-stopped
+    environment:
+      - SECRET_KEY=${BLENDER_SECRET_KEY:-change-me-flight-blender-secret-key}
+      - IS_DEBUG=${BLENDER_IS_DEBUG:-1}
+      - BYPASS_AUTH_TOKEN_VERIFICATION=${BLENDER_BYPASS_AUTH_TOKEN_VERIFICATION:-1}
+      - USSP_NETWORK_ENABLED=${BLENDER_USSP_NETWORK_ENABLED:-1}
+      - DSS_BASE_URL=http://local-dss-core:8082/
+      - DSS_AUTH_URL=http://local-dss-dummy-oauth:8085
+      - DSS_AUTH_TOKEN_ENDPOINT=/token
+      - DSS_SELF_AUDIENCE=localhost
+      - AUTH_DSS_CLIENT_ID=${DSS_CLIENT_ID:-local-uss-1}
+      - AUTH_DSS_CLIENT_SECRET=${DSS_CLIENT_SECRET:-change-me-dss-client-secret}
+      - RID_FALLBACK_USS_URLS=
+      - REDIS_HOST=redis-blender
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${BLENDER_REDIS_PASSWORD:-blender_redis}
+      - REDIS_BROKER_URL=redis://:${BLENDER_REDIS_PASSWORD:-blender_redis}@redis-blender:6379
+      - DATABASE_URL=postgres://${BLENDER_DB_USER:-mydatabaseuser}:${BLENDER_DB_PASSWORD:-change-me-blender-db-password}@db-blender:5432/${BLENDER_DB_NAME:-mydatabase}
+      - POSTGRES_HOST=db-blender
+      - POSTGRES_PORT=5432
+    command: ./entrypoints/with-database/entrypoint-celery.sh
+    depends_on:
+      - redis-blender
+      - db-blender
+      - flight-blender
+      - local-dss-core
+      - local-dss-dummy-oauth
+    volumes:
+      - ./atc-blender:/app
+      - blender_venv:/app/.venv
+    networks:
+      - interop_ecosystem_network
+
+  mock-uss:
+    image: python:3.11-slim
+    container_name: mock-uss
+    command: ["python", "/app/mock_uss.py"]
+    environment:
+      DSS_BASE_URL: http://local-dss-core:8082/
+      DSS_AUTH_URL: http://local-dss-dummy-oauth:8085/token
+      DSS_SELF_AUDIENCE: localhost
+      MOCK_USS_BASE_URL: http://mock-uss:9100
+      MOCK_USS_PORT: 9100
+      ISA_DURATION_SEC: 21600
+    volumes:
+      - ./mock-uss/mock_uss.py:/app/mock_uss.py:ro
+    depends_on:
+      - local-dss-core
+      - local-dss-dummy-oauth
+    networks:
+      - interop_ecosystem_network
+
+volumes:
+  atc_drone_data:
+  blender_db_data:
+  blender_venv:
+  dss_crdb_data:
+
+networks:
+  interop_ecosystem_network:
+    driver: bridge

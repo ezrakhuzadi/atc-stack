@@ -1,0 +1,21 @@
+services:
+  mock-uss:
+    image: python:3.11-slim
+    command: ["python", "/app/mock_uss.py"]
+    container_name: mock-uss
+    environment:
+      DSS_BASE_URL: http://local-dss-core:8082/
+      DSS_AUTH_URL: http://local-dss-dummy-oauth:8085/token
+      DSS_SELF_AUDIENCE: localhost
+      MOCK_USS_BASE_URL: http://mock-uss:9100
+      MOCK_USS_PORT: 9100
+      ISA_DURATION_SEC: 21600
+    volumes:
+      - ./mock_uss.py:/app/mock_uss.py:ro
+    networks:
+      - interop_ecosystem_network
+    restart: unless-stopped
+
+networks:
+  interop_ecosystem_network:
+    external: true

@@ -1,0 +1,12 @@
+[submodule "atc-frontend"]
+	path = atc-frontend
+	url = https://github.com/ezrakhuzadi/atc-frontend.git
+[submodule "atc-drone"]
+	path = atc-drone
+	url = https://github.com/ezrakhuzadi/atc-drone.git
+[submodule "atc-blender"]
+	path = atc-blender
+	url = https://github.com/ezrakhuzadi/atc-blender.git
+[submodule "interuss-dss"]
+	path = interuss-dss
+	url = https://github.com/interuss/dss.git
