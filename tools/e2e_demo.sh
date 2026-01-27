@@ -13,6 +13,8 @@ ATC_REGISTRATION_TOKEN="${ATC_REGISTRATION_TOKEN:-change-me-registration-token}"
 
 log() { printf "[e2e] %s\n" "$*"; }
 
+SECONDS=0
+
 wait_http() {
   local url="$1"
   local tries="${2:-60}"
@@ -76,12 +78,17 @@ else
   fi
 fi
 
+ready_start="$SECONDS"
 log "waiting for ATC /ready..."
 wait_http "$ATC_BASE_URL/ready" 60 2 || { log "ATC not ready: $ATC_BASE_URL/ready"; exit 1; }
+log "ATC ready in $((SECONDS - ready_start))s"
 
+ui_start="$SECONDS"
 log "waiting for frontend /login..."
 wait_http "$FRONTEND_BASE_URL/login" 60 2 || { log "frontend not reachable: $FRONTEND_BASE_URL/login"; exit 1; }
+log "frontend reachable in $((SECONDS - ui_start))s"
 
+register_start="$SECONDS"
 log "registering 2 drones"
 register_a="$(post_json_register "$ATC_BASE_URL/v1/drones/register" "{\"drone_id\":\"E2E_DRONE_A\",\"owner_id\":\"e2e\"}" \
   | python -c 'import json,sys; print(json.load(sys.stdin).get("session_token",""))' \
@@ -89,6 +96,7 @@ register_a="$(post_json_register "$ATC_BASE_URL/v1/drones/register" "{\"drone_id
 register_b="$(post_json_register "$ATC_BASE_URL/v1/drones/register" "{\"drone_id\":\"E2E_DRONE_B\",\"owner_id\":\"e2e\"}" \
   | python -c 'import json,sys; print(json.load(sys.stdin).get("session_token",""))' \
   )"
+log "registration completed in $((SECONDS - register_start))s"
 
 if [[ -z "$register_a" || -z "$register_b" ]]; then
   log "registration failed (missing session_token). Did you set ATC_REGISTRATION_TOKEN correctly?"
@@ -102,10 +110,13 @@ print(datetime.now(timezone.utc).isoformat().replace("+00:00","Z"))
 PY
 )"
 
+telemetry_start="$SECONDS"
 log "sending telemetry (create immediate separation violation)"
 post_json_auth "$ATC_BASE_URL/v1/telemetry" "$register_a" "{\"drone_id\":\"E2E_DRONE_A\",\"owner_id\":\"e2e\",\"lat\":33.6846,\"lon\":-117.8265,\"altitude_m\":90.0,\"heading_deg\":90.0,\"speed_mps\":0.0,\"timestamp\":\"$ts\"}" >/dev/null
 post_json_auth "$ATC_BASE_URL/v1/telemetry" "$register_b" "{\"drone_id\":\"E2E_DRONE_B\",\"owner_id\":\"e2e\",\"lat\":33.6846,\"lon\":-117.8265,\"altitude_m\":90.0,\"heading_deg\":270.0,\"speed_mps\":0.0,\"timestamp\":\"$ts\"}" >/dev/null
+log "telemetry submitted in $((SECONDS - telemetry_start))s"
 
+conflict_start="$SECONDS"
 log "waiting for conflict to appear..."
 for ((i=1; i<=30; i++)); do
   conflicts="$(curl -fsS "$ATC_BASE_URL/v1/conflicts" || true)"
@@ -130,6 +141,9 @@ if [[ "${count:-0}" -le 0 ]]; then
   exit 1
 fi
 
+log "conflict detected after $((SECONDS - conflict_start))s"
+
+geofence_start="$SECONDS"
 log "creating geofence + validating check-route"
 post_json "$ATC_BASE_URL/v1/geofences" '{"name":"E2E Zone","geofence_type":"no_fly_zone","polygon":[[33.0,-117.0],[33.0,-116.9],[33.1,-116.9],[33.1,-117.0],[33.0,-117.0]],"lower_altitude_m":0.0,"upper_altitude_m":120.0}' >/dev/null
 route_check="$(post_json "$ATC_BASE_URL/v1/geofences/check-route" '{"waypoints":[{"lat":33.05,"lon":-117.05,"altitude_m":50.0},{"lat":33.05,"lon":-116.95,"altitude_m":50.0}]}' )"
@@ -144,4 +158,5 @@ if [[ "$route_conflicts" != "true" ]]; then
   exit 1
 fi
 
-log "OK"
+log "geofence check completed in $((SECONDS - geofence_start))s"
+log "OK (total ${SECONDS}s)"
