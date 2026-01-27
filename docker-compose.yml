@@ -20,7 +20,8 @@ services:
       - BLENDER_URL=http://flight-blender:8000
       - BLENDER_AUTH_TOKEN=${BLENDER_AUTH_TOKEN:-}
     depends_on:
-      - atc-drone
+      atc-drone:
+        condition: service_healthy
     networks:
       - interop_ecosystem_network
 
@@ -32,6 +33,12 @@ services:
     container_name: atc-drone
     ports:
       - "${ATC_SERVER_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/ready"]
+      interval: 10s
+      timeout: 2s
+      retries: 6
+      start_period: 20s
     environment:
       - ATC_ENV=${ATC_ENV:-development}
       - RUST_LOG=${ATC_SERVER_RUST_LOG:-info}
