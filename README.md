@@ -40,6 +40,16 @@ This stack expects host data directories at:
 docker compose up -d
 ```
 
+## Development (Flight Blender bind mounts)
+
+The base `docker-compose.yml` is intentionally reproducible (no bind-mounting app code into containers).
+
+If you want to iterate on Flight Blender locally with code mounted into the container, use:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
+
 ## Security note
 
 Secrets are loaded from `.env` and are not committed. The defaults in `.env.example` are **demo-only** (not production-hard). In particular, `BLENDER_BYPASS_AUTH_TOKEN_VERIFICATION=1` is intended only for local sandboxes.

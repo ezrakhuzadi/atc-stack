@@ -1,0 +1,20 @@
+# Development overrides (NOT for production/demo hardening).
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+#
+# This re-enables bind-mounting the Flight Blender source tree into the container,
+# and keeps the Python venv in a named Docker volume for faster iteration.
+
+services:
+  flight-blender:
+    volumes:
+      - ./atc-blender:/app
+      - blender_venv:/app/.venv
+
+  flight-blender-celery:
+    volumes:
+      - ./atc-blender:/app
+      - blender_venv:/app/.venv
+
+volumes:
+  blender_venv:

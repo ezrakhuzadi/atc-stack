@@ -315,9 +315,6 @@ services:
         condition: service_healthy
       local-dss-dummy-oauth:
         condition: service_healthy
-    volumes:
-      - ./atc-blender:/app
-      - blender_venv:/app/.venv
     networks:
       - interop_ecosystem_network
 
@@ -351,9 +348,6 @@ services:
       - flight-blender
       - local-dss-core
       - local-dss-dummy-oauth
-    volumes:
-      - ./atc-blender:/app
-      - blender_venv:/app/.venv
     networks:
       - interop_ecosystem_network
 
@@ -379,7 +373,6 @@ services:
 volumes:
   atc_drone_data:
   blender_db_data:
-  blender_venv:
   dss_crdb_data:
 
 networks:
