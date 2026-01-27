@@ -1,7 +1,7 @@
 import math
 import os
 from functools import lru_cache
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import rasterio
@@ -43,13 +43,15 @@ def sample_tile(path: str, points: List[Tuple[float, float]]) -> List[float]:
     dataset = open_dataset(path)
     nodata = dataset.nodata
     samples = dataset.sample(points)
-    values = []
+    values: List[Optional[float]] = []
     for sample in samples:
         value = float(sample[0])
         if nodata is not None and value == nodata:
-            value = 0.0
+            values.append(None)
+            continue
         if not np.isfinite(value):
-            value = 0.0
+            values.append(None)
+            continue
         values.append(value)
     return values
 
@@ -59,13 +61,13 @@ class ElevationRequest(BaseModel):
     longitude: List[float]
 
 
-def elevation_from_lists(lats: List[float], lons: List[float]) -> Dict[str, List[float]]:
+def elevation_from_lists(lats: List[float], lons: List[float]) -> Dict[str, List[Optional[float]]]:
     if not lats or not lons:
         raise HTTPException(status_code=400, detail="latitude and longitude are required")
     if len(lats) != len(lons):
         raise HTTPException(status_code=400, detail="latitude and longitude lengths differ")
 
-    elevations = [0.0] * len(lats)
+    elevations: List[Optional[float]] = [None] * len(lats)
     grouped: Dict[str, List[Tuple[int, float, float]]] = {}
 
     for idx, (lat, lon) in enumerate(zip(lats, lons)):
@@ -87,14 +89,14 @@ def elevation_from_lists(lats: List[float], lons: List[float]) -> Dict[str, List
 
 
 @app.get("/v1/elevation")
-def elevation(latitude: str = "", longitude: str = "") -> Dict[str, List[float]]:
+def elevation(latitude: str = "", longitude: str = "") -> Dict[str, List[Optional[float]]]:
     lats = parse_list(latitude)
     lons = parse_list(longitude)
     return elevation_from_lists(lats, lons)
 
 
 @app.post("/v1/elevation")
-def elevation_post(req: ElevationRequest) -> Dict[str, List[float]]:
+def elevation_post(req: ElevationRequest) -> Dict[str, List[Optional[float]]]:
     return elevation_from_lists(req.latitude, req.longitude)
 
 
