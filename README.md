@@ -40,6 +40,20 @@ This stack expects host data directories at:
 docker compose up -d
 ```
 
+## Smoke test (end-to-end)
+
+Run a quick demo validation (register drones, send telemetry, confirm conflicts/geofence checks):
+
+```bash
+./tools/e2e_demo.sh
+```
+
+If images are not built yet:
+
+```bash
+E2E_BUILD=1 ./tools/e2e_demo.sh
+```
+
 ## MAVLink (optional gateway)
 
 If you’re flying with MAVLink (e.g., Raspberry Pi + LTE modem), enable the `mavlink` profile to forward autopilot telemetry into `atc-drone`:
