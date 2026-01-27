@@ -326,6 +326,18 @@ services:
     build: ./atc-blender
     container_name: flight-blender-worker
     restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os; from celery import Celery; app = Celery(broker=os.environ['REDIS_BROKER_URL']); res = app.control.ping(timeout=2.0); raise SystemExit(0 if res else 1)",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 6
+      start_period: 60s
     environment:
       - SECRET_KEY=${BLENDER_SECRET_KEY:-change-me-flight-blender-secret-key}
       - IS_DEBUG=${BLENDER_IS_DEBUG:-1}
