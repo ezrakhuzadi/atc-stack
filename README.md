@@ -62,4 +62,11 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 
 ## Security note
 
-Secrets are loaded from `.env` and are not committed. The defaults in `.env.example` are **demo-only** (not production-hard). In particular, `BLENDER_BYPASS_AUTH_TOKEN_VERIFICATION=1` is intended only for local sandboxes.
+Secrets are loaded from `.env` and are not committed. The defaults in `.env.example` are **demo-only** (not production-hard). In particular, **do not** enable `BLENDER_BYPASS_AUTH_TOKEN_VERIFICATION=1` outside local sandboxes.
+
+If you want the easiest local sandbox experience, set:
+
+```bash
+BLENDER_BYPASS_AUTH_TOKEN_VERIFICATION=1
+BLENDER_IS_DEBUG=1
+```
