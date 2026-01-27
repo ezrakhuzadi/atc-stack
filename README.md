@@ -40,6 +40,16 @@ This stack expects host data directories at:
 docker compose up -d
 ```
 
+## MAVLink (optional gateway)
+
+If you’re flying with MAVLink (e.g., Raspberry Pi + LTE modem), enable the `mavlink` profile to forward autopilot telemetry into `atc-drone`:
+
+```bash
+docker compose --profile mavlink up -d --build mavlink-gateway
+```
+
+Configure `MAVLINK_ENDPOINT` (serial/UDP) plus either `ATC_SESSION_TOKEN` or `ATC_REGISTRATION_TOKEN` in `.env`.
+
 ## Development (Flight Blender bind mounts)
 
 The base `docker-compose.yml` is intentionally reproducible (no bind-mounting app code into containers).

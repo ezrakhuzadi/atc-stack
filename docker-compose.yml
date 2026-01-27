@@ -68,6 +68,29 @@ services:
       - interop_ecosystem_network
 
   # ===========================================
+  # MAVLink Gateway (optional; Raspberry Pi / SITL)
+  # ===========================================
+  mavlink-gateway:
+    build: ./mavlink-gateway
+    container_name: mavlink-gateway
+    profiles: ["mavlink"]
+    restart: unless-stopped
+    environment:
+      - ATC_SERVER_URL=http://atc-drone:3000
+      - ATC_DRONE_ID=${ATC_DRONE_ID:-DRONE0001}
+      - ATC_OWNER_ID=${ATC_OWNER_ID:-}
+      - ATC_SESSION_TOKEN=${ATC_SESSION_TOKEN:-}
+      - ATC_REGISTRATION_TOKEN=${ATC_REGISTRATION_TOKEN:-}
+      - MAVLINK_ENDPOINT=${MAVLINK_ENDPOINT:-udp:0.0.0.0:14550}
+      - ATC_TELEMETRY_HZ=${ATC_TELEMETRY_HZ:-5}
+      - LOG_LEVEL=${MAVLINK_LOG_LEVEL:-INFO}
+    depends_on:
+      atc-drone:
+        condition: service_healthy
+    networks:
+      - interop_ecosystem_network
+
+  # ===========================================
   # Local Overpass API (OSM data for routing)
   # ===========================================
   overpass:
