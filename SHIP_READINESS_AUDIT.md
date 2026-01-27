@@ -32,8 +32,8 @@ To satisfy “read every file (do not skip / do not partially read)”, the repo
 - Scanner output: `ship_audit_scan.json`
 
 Latest scan summary (from `ship_audit_scan.json`):
-- Files read: **1520**
-- Bytes read: **99,465,263**
+- Files read: **1521**
+- Bytes read: **99,471,611**
 - Findings: **417**
   - `rust_unwrap`: 190
   - `eval_exec`: 127
@@ -77,14 +77,15 @@ Notes:
   - Parse via `json.loads`, with `ast.literal_eval` fallback for backward compatibility with previously stored Python `repr` strings
 
 ### 3.2 TLS verification bypass knob exists in MAVLink gateway
-**Status: OPEN (must be gated)**
+**Status: GUARDED (prod fails closed)**
 
 - Location: `mavlink-gateway/main.py` (scan hit: `verify = False if tls_insecure ...`)
 - Risk: If `tls_insecure` is enabled in production by mistake, the gateway becomes MITM-vulnerable.
-- Required actions to ship safely:
-  - Ensure `tls_insecure` defaults to **false** everywhere.
-  - Add an explicit production guard (example policy): if `ATC_ENV=prod`, refuse to start when `tls_insecure=true`.
-  - Document the knob clearly as dev-only.
+- Current mitigation:
+  - The gateway refuses to start when `ATC_TLS_INSECURE=1` and `ATC_ENV` is `prod`/`production`.
+- Remaining ship requirements:
+  - Ensure `ATC_ENV=production` is set in real deployments (so the guard is active).
+  - Keep `ATC_TLS_INSECURE` dev-only and documented.
 
 ### 3.3 Private keys exist in the repo (currently vendor/test only)
 **Status: ACCEPTABLE ONLY IF GUARDED**

@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-01-27T10:08:02.696560+00:00",
+  "generated_at": "2026-01-27T10:16:46.215115+00:00",
   "roots": [
     "/mnt/atc-data/Project/atc-stack"
   ],
-  "total_files": 1520,
-  "total_bytes": 99465263,
+  "total_files": 1521,
+  "total_bytes": 99471611,
   "ext_counts": {
     ".cjs": 1,
     ".conf": 1,
@@ -37,6 +37,7 @@
     ".png": 184,
     ".puml": 9,
     ".py": 275,
+    ".rdb": 1,
     ".rs": 88,
     ".sh": 47,
     ".sql": 39,
@@ -97,8 +98,8 @@
     },
     {
       "path": "/mnt/atc-data/Project/atc-stack/SHIP_READINESS_AUDIT.md",
-      "size": 8688,
-      "sha256": "08620de8ecd8e29c9e79c85eb0d25e8302e3e483e44a5d1e9861499106ceb495",
+      "size": 8916,
+      "sha256": "602c5a17e7ae0a2fd2b393b9ce6995e531836d11aa40a678a18ab68781bf2f4c",
       "binary": false
     },
     {
@@ -652,6 +653,12 @@
       "size": 2207,
       "sha256": "21357fe51ae94f3d19a4774a96741fa7903c8c0d8566e8f967d040dafb1f0666",
       "binary": false
+    },
+    {
+      "path": "/mnt/atc-data/Project/atc-stack/atc-blender/dump.rdb",
+      "size": 5912,
+      "sha256": "9b06081deedfe96ecc9fe753bac05876fb4dd71dca9300039facaed339112aba",
+      "binary": true
     },
     {
       "path": "/mnt/atc-data/Project/atc-stack/atc-blender/entrypoints/no-database/entrypoint-beat.sh",
@@ -9091,8 +9098,8 @@
     },
     {
       "path": "/mnt/atc-data/Project/atc-stack/mavlink-gateway/main.py",
-      "size": 18728,
-      "sha256": "6a2cefa961c525f70432c9fcef9b9415d0eb19b1352df9e6cc161754f25ee99c",
+      "size": 18936,
+      "sha256": "9cd8851be077a409b9242231bfe8a11cb158aceb381844ec290ddd2d61c04cc4",
       "binary": false
     },
     {

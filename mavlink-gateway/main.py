@@ -310,6 +310,7 @@ def main() -> int:
         format="%(asctime)s %(levelname)s %(message)s",
     )
 
+    atc_env = env("ATC_ENV", "").lower()
     atc_url = env("ATC_SERVER_URL", "http://localhost:3000")
     drone_id = env("ATC_DRONE_ID", "DRONE0001")
     owner_id = env("ATC_OWNER_ID", "")
@@ -317,6 +318,9 @@ def main() -> int:
     session_token = env("ATC_SESSION_TOKEN", "")
     ca_cert_path = env("ATC_SERVER_CA_CERT_PATH", "")
     tls_insecure = env_bool("ATC_TLS_INSECURE", False)
+    if tls_insecure and atc_env in ("prod", "production"):
+        logging.error("refusing to start with ATC_TLS_INSECURE=1 when ATC_ENV=%s", atc_env)
+        return 2
     mavlink_endpoint = env("MAVLINK_ENDPOINT", "udp:0.0.0.0:14550")
     telemetry_hz = env_float("ATC_TELEMETRY_HZ", 5.0)
     command_poll_hz = env_float("ATC_COMMAND_POLL_HZ", 2.0)
@@ -498,4 +502,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
