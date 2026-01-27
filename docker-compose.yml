@@ -18,9 +18,12 @@ services:
       - ATC_ADMIN_TOKEN=${ATC_ADMIN_TOKEN:-change-me-admin}
       - ATC_REGISTRATION_TOKEN=${ATC_REGISTRATION_TOKEN:-change-me-registration-token}
       - ATC_WS_TOKEN=${ATC_WS_TOKEN:-change-me-ws-token}
+      - ATC_SESSION_REDIS_URL=redis://:${BLENDER_REDIS_PASSWORD:-blender_redis}@redis-blender:6379/1
       - BLENDER_URL=http://flight-blender:8000
       - BLENDER_AUTH_TOKEN=${BLENDER_AUTH_TOKEN:-}
     depends_on:
+      redis-blender:
+        condition: service_started
       atc-drone:
         condition: service_healthy
       flight-blender:
