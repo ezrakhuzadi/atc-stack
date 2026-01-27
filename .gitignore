@@ -4,6 +4,7 @@
 *.log
 
 # Local data mounts (OSM, Overpass DB, DEM tiles)
+data/
 osm/
 overpass/
 overpass-us/
