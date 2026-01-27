@@ -19,3 +19,7 @@ __pycache__/
 
 # Node caches (if you run tooling locally inside submodules)
 node_modules/
+
+# Generated TLS materials for local demo mode
+certs/*
+!certs/.gitkeep

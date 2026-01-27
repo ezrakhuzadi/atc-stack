@@ -14,13 +14,16 @@ services:
     environment:
       - NODE_ENV=${ATC_FRONTEND_NODE_ENV:-development}
       - PORT=5050
-      - ATC_SERVER_URL=http://atc-drone:3000
+      - ATC_SERVER_URL=${ATC_SERVER_URL:-http://atc-drone:3000}
+      - ATC_SERVER_CA_CERT_PATH=${ATC_SERVER_CA_CERT_PATH:-}
       - ATC_ADMIN_TOKEN=${ATC_ADMIN_TOKEN:-change-me-admin}
       - ATC_REGISTRATION_TOKEN=${ATC_REGISTRATION_TOKEN:-change-me-registration-token}
       - ATC_WS_TOKEN=${ATC_WS_TOKEN:-change-me-ws-token}
       - ATC_SESSION_REDIS_URL=redis://:${BLENDER_REDIS_PASSWORD:-blender_redis}@redis-blender:6379/1
       - BLENDER_URL=http://flight-blender:8000
       - BLENDER_AUTH_TOKEN=${BLENDER_AUTH_TOKEN:-}
+    volumes:
+      - ./certs:/certs:ro
     depends_on:
       redis-blender:
         condition: service_started
@@ -41,7 +44,7 @@ services:
     ports:
       - "${ATC_SERVER_PORT:-3000}:3000"
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:3000/ready"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/ready || curl -fsSk https://localhost:3000/ready"]
       interval: 10s
       timeout: 2s
       retries: 6
@@ -55,6 +58,9 @@ services:
       - ATC_REGISTRATION_TOKEN=${ATC_REGISTRATION_TOKEN:-change-me-registration-token}
       - ATC_WS_TOKEN=${ATC_WS_TOKEN:-change-me-ws-token}
       - ATC_REQUIRE_WS_TOKEN=${ATC_REQUIRE_WS_TOKEN:-true}
+      - ATC_TLS_CERT_PATH=${ATC_TLS_CERT_PATH:-}
+      - ATC_TLS_KEY_PATH=${ATC_TLS_KEY_PATH:-}
+      - ATC_REQUIRE_TLS=${ATC_REQUIRE_TLS:-}
       - ATC_COMPLIANCE_OVERPASS_URL=http://overpass/api/interpreter
       - ATC_TERRAIN_PROVIDER_URL=http://terrain-api:8081/v1/elevation
       - ATC_TERRAIN_USE_POST=true
@@ -67,6 +73,7 @@ services:
       - ATC_COMPLIANCE_OVERPASS_TIMEOUT_S=60
     volumes:
       - atc_drone_data:/app/data
+      - ./certs:/certs:ro
     networks:
       - interop_ecosystem_network
 
@@ -79,7 +86,9 @@ services:
     profiles: ["mavlink"]
     restart: unless-stopped
     environment:
-      - ATC_SERVER_URL=http://atc-drone:3000
+      - ATC_SERVER_URL=${ATC_SERVER_URL:-http://atc-drone:3000}
+      - ATC_SERVER_CA_CERT_PATH=${ATC_SERVER_CA_CERT_PATH:-}
+      - ATC_TLS_INSECURE=${ATC_TLS_INSECURE:-}
       - ATC_DRONE_ID=${ATC_DRONE_ID:-DRONE0001}
       - ATC_OWNER_ID=${ATC_OWNER_ID:-}
       - ATC_SESSION_TOKEN=${ATC_SESSION_TOKEN:-}
@@ -87,6 +96,8 @@ services:
       - MAVLINK_ENDPOINT=${MAVLINK_ENDPOINT:-udp:0.0.0.0:14550}
       - ATC_TELEMETRY_HZ=${ATC_TELEMETRY_HZ:-5}
       - LOG_LEVEL=${MAVLINK_LOG_LEVEL:-INFO}
+    volumes:
+      - ./certs:/certs:ro
     depends_on:
       atc-drone:
         condition: service_healthy
