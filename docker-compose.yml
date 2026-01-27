@@ -8,6 +8,7 @@ services:
   atc-frontend:
     build: ./atc-frontend
     container_name: atc-frontend
+    restart: unless-stopped
     ports:
       - "${ATC_FRONTEND_PORT:-5050}:5050"
     environment:
@@ -33,6 +34,7 @@ services:
   atc-drone:
     build: ./atc-drone
     container_name: atc-drone
+    restart: unless-stopped
     ports:
       - "${ATC_SERVER_PORT:-3000}:3000"
     healthcheck:
@@ -71,6 +73,7 @@ services:
   overpass:
     image: wiktorn/overpass-api:latest
     container_name: overpass
+    restart: unless-stopped
     environment:
       - OVERPASS_MODE=init
       - OVERPASS_META=no
@@ -96,6 +99,7 @@ services:
   terrain-api:
     build: ./terrain-api
     container_name: terrain-api
+    restart: unless-stopped
     environment:
       - TERRAIN_DATA_DIR=/data/terrain
       - TERRAIN_CACHE_SIZE=8
