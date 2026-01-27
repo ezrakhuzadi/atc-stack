@@ -22,6 +22,8 @@ services:
     depends_on:
       atc-drone:
         condition: service_healthy
+      flight-blender:
+        condition: service_healthy
     networks:
       - interop_ecosystem_network
 
@@ -216,6 +218,7 @@ services:
     image: "valkey/valkey:latest"
     command: ["redis-server", "--requirepass", "${BLENDER_REDIS_PASSWORD:-blender_redis}"]
     container_name: redis-blender
+    restart: unless-stopped
     expose:
       - "6379"
     networks:
@@ -224,6 +227,7 @@ services:
   db-blender:
     image: postgres:17
     container_name: db-blender
+    restart: unless-stopped
     expose:
       - "5432"
     environment:
@@ -238,8 +242,21 @@ services:
   flight-blender:
     build: ./atc-blender
     container_name: flight-blender
+    restart: unless-stopped
     ports:
       - "8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/ping', timeout=2).read()",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 40s
     environment:
       - SECRET_KEY=${BLENDER_SECRET_KEY:-change-me-flight-blender-secret-key}
       - IS_DEBUG=${BLENDER_IS_DEBUG:-1}
