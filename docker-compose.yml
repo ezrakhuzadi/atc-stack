@@ -195,6 +195,16 @@ services:
         condition: service_completed_successfully
     volumes:
       - ./interuss-dss/build/test-certs:/var/test-certs:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- 'http://localhost:8082/healthy' >/dev/null 2>&1 && wget -qO- 'http://local-dss-crdb:8080/health?ready=1' >/dev/null 2>&1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 6
+      start_period: 60s
     networks:
       - interop_ecosystem_network
 
@@ -203,11 +213,22 @@ services:
       context: ./interuss-dss
       dockerfile: cmds/dummy-oauth/Dockerfile
     container_name: local-dss-dummy-oauth
+    restart: unless-stopped
     command: -private_key_file /var/test-certs/auth2.key
     ports:
       - "8085:8085"
     volumes:
       - ./interuss-dss/build/test-certs:/var/test-certs:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- 'http://localhost:8085/token?intended_audience=-&scope=-' >/dev/null 2>&1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
     networks:
       - interop_ecosystem_network
 
@@ -286,10 +307,14 @@ services:
       - POSTGRES_PORT=5432
     command: ./entrypoints/no-database/entrypoint.sh
     depends_on:
-      - redis-blender
-      - db-blender
-      - local-dss-core
-      - local-dss-dummy-oauth
+      redis-blender:
+        condition: service_started
+      db-blender:
+        condition: service_started
+      local-dss-core:
+        condition: service_healthy
+      local-dss-dummy-oauth:
+        condition: service_healthy
     volumes:
       - ./atc-blender:/app
       - blender_venv:/app/.venv
