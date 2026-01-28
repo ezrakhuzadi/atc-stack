@@ -8,6 +8,10 @@ Reproducible unified Docker Compose stack for:
 - `terrain-api` (local Copernicus DEM elevation service)
 - `mock-uss` (tiny demo USS)
 
+## About
+
+`atc-stack` is the single-source, reproducible local sandbox for the ATC ecosystem. It boots the backend, web UI, UTM integration services, and supporting data services in one Compose project so you can demo, test, or develop the full pipeline end-to-end. The stack assumes you mount OSM/Overpass and terrain datasets from `./data/` (not committed) and runs fully locally once those are in place.
+
 ## Quickstart
 
 1) Clone with submodules:
