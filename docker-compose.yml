@@ -14,14 +14,32 @@ services:
     environment:
       - NODE_ENV=${ATC_FRONTEND_NODE_ENV:-development}
       - PORT=5050
+      - DEMO_MODE=1
       - ATC_SERVER_URL=${ATC_SERVER_URL:-http://atc-drone:3000}
       - ATC_SERVER_CA_CERT_PATH=${ATC_SERVER_CA_CERT_PATH:-}
       - ATC_ADMIN_TOKEN=${ATC_ADMIN_TOKEN:-change-me-admin}
       - ATC_REGISTRATION_TOKEN=${ATC_REGISTRATION_TOKEN:-change-me-registration-token}
       - ATC_WS_TOKEN=${ATC_WS_TOKEN:-change-me-ws-token}
       - ATC_SESSION_REDIS_URL=redis://:${BLENDER_REDIS_PASSWORD:-blender_redis}@redis-blender:6379/1
+      - ATC_ALLOW_DEFAULT_USERS=${ATC_ALLOW_DEFAULT_USERS:-0}
+      - ATC_BOOTSTRAP_ADMIN_EMAIL=${ATC_BOOTSTRAP_ADMIN_EMAIL:-}
+      - ATC_BOOTSTRAP_ADMIN_PASSWORD=${ATC_BOOTSTRAP_ADMIN_PASSWORD:-}
+      - ATC_BOOTSTRAP_ADMIN_ID=${ATC_BOOTSTRAP_ADMIN_ID:-}
+      - ATC_BOOTSTRAP_ADMIN_NAME=${ATC_BOOTSTRAP_ADMIN_NAME:-}
+      - ATC_BOOTSTRAP_ADMIN_ROLE=${ATC_BOOTSTRAP_ADMIN_ROLE:-}
+      - ATC_BOOTSTRAP_GUEST_EMAIL=${ATC_BOOTSTRAP_GUEST_EMAIL:-}
+      - ATC_BOOTSTRAP_GUEST_PASSWORD=${ATC_BOOTSTRAP_GUEST_PASSWORD:-}
+      - ATC_BOOTSTRAP_GUEST_ID=${ATC_BOOTSTRAP_GUEST_ID:-}
+      - ATC_BOOTSTRAP_GUEST_NAME=${ATC_BOOTSTRAP_GUEST_NAME:-}
+      - ATC_BOOTSTRAP_GUEST_ROLE=${ATC_BOOTSTRAP_GUEST_ROLE:-}
       - BLENDER_URL=http://flight-blender:8000
       - BLENDER_AUTH_TOKEN=${BLENDER_AUTH_TOKEN:-}
+      # Cesium Ion (optional but required for 3D tiles/terrain/buildings)
+      - CESIUM_ION_TOKEN=${CESIUM_ION_TOKEN:-}
+      # Optional overrides; defaults are applied in the frontend if unset.
+      - ION_BASE_IMAGERY_ASSET_ID=${ION_BASE_IMAGERY_ASSET_ID:-}
+      - GOOGLE_3D_TILES_ASSET_ID=${GOOGLE_3D_TILES_ASSET_ID:-}
+      - OSM_BUILDINGS_ASSET_ID=${OSM_BUILDINGS_ASSET_ID:-}
     volumes:
       - ./certs:/certs:ro
     depends_on:

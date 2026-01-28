@@ -7,7 +7,7 @@ This stack can run fully offline for **terrain** and **building/obstacle** looku
 
 ## Download
 
-From `Project/`:
+From the repo root (`atc-stack/`):
 
 ```bash
 python tools/fetch_nationwide_data.py all --extent us50 --jobs 12
@@ -20,18 +20,18 @@ Notes:
 
 ## Docker compose wiring
 
-`docker-compose.unified.yml` defaults to:
-- `ATC_OSM_PBF=us-latest.osm.pbf`
-- `ATC_OSM_DIR=/mnt/atc-data/osm`
-- `ATC_TERRAIN_DIR=/mnt/atc-data/terrain/copernicus`
-- `ATC_OVERPASS_DB_DIR=/mnt/atc-data/overpass-us`
+`docker-compose.yml` reads these env vars (see `.env` for this machine’s current settings):
+- `ATC_OSM_PBF` (e.g., `us-latest.osm.pbf`)
+- `ATC_OSM_DIR` (e.g., `/mnt/atc-data/osm`)
+- `ATC_TERRAIN_DIR` (e.g., `/mnt/atc-data/terrain/copernicus`)
+- `ATC_OVERPASS_DB_DIR` (e.g., `/mnt/atc-data/overpass-us`)
 
 You can override these via environment variables, e.g.:
 
 ```bash
 export ATC_OSM_PBF=california-latest.osm.pbf
 export ATC_OVERPASS_DB_DIR=/mnt/atc-data/overpass-ca
-docker compose -f docker-compose.unified.yml up -d overpass
+docker compose up -d overpass
 ```
 
 ## First-time Overpass build

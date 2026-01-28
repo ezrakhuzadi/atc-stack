@@ -23,3 +23,6 @@ node_modules/
 # Generated TLS materials for local demo mode
 certs/*
 !certs/.gitkeep
+
+# Timed audit clock state (local, per-machine)
+.timed_audit_clock.json
