@@ -225,7 +225,22 @@ As of the last pause before this edit:
 - Command expiry handling: do not execute stale reroutes after long comms gaps.
 - Altitude reference correctness end-to-end (MSL/AMSL/geoid offsets) must be verified before autonomy.
 
-### 6.6 External Audit Claims Not Merged (Resolved / Not Found)
+### 6.6 Safety Assurance & Validation Coverage (Missing)
+
+**Why this matters:** current findings list correctness risks (sampling-based geometry/CPA, AGL ambiguity, timestamp normalization), but there is **insufficient verification evidence** that the safety logic is correct under worst‑case conditions. The gaps below are about *how to prove correctness* and *where in the codebase to anchor those proofs*.
+
+**Open risks / work (specific, code‑anchored):**
+- **Geometry correctness lacks proof:** add unit + property‑based tests targeting  
+  - `Geofence::intersects_segment` (sampling) in `atc-drone/crates/atc-core/src/models.rs`  
+  - `segment_to_segment_distance` in `atc-drone/crates/atc-core/src/spatial.rs`  
+  Recommended: create `atc-drone/crates/atc-core/tests/geometry.rs` with crossing‑segment cases, narrow‑polygon misses, and a test‑only reference implementation (e.g., `geo` crate) for cross‑checking.
+- **Conflict CPA correctness not validated:** `atc-drone/crates/atc-core/src/conflict.rs` currently samples 1‑second steps. When replacing with analytic CPA or adaptive sampling, add regression tests in `conflict.rs` plus integration coverage in `atc-drone/crates/atc-server/tests/conflict_test.rs` for “near‑miss between samples” scenarios.
+- **Telemetry time semantics not verified:** `normalize_telemetry_timestamp` in `atc-drone/crates/atc-server/src/api/routes.rs` mutates out‑of‑bounds timestamps. Add API‑level tests in `atc-drone/crates/atc-server/tests/telemetry_test.rs` (or `src/api/tests.rs`) to assert rejection/flagging behavior once normalization is removed.
+- **Altitude reference (AGL/AMSL) lacks end‑to‑end tests:** conversion happens in `atc-drone/crates/atc-server/src/altitude.rs`, `state/store.rs`, and `route_planner.rs`. Add unit tests for conversion and integration tests that inject terrain to validate AGL ceilings (route planner + compliance).
+- **Scenario regression harness is not tied to safety outcomes:** leverage `atc-drone/crates/atc-cli` scenarios plus `tools/e2e_demo.sh` to define deterministic safety scenarios (conflict prediction, geofence intersections, AGL violations) and gate them in CI.
+- **CI safety gates are absent:** add CI workflows (per repo) to run the above tests, `cargo test --all`, and the ignored integration tests (`atc-drone/crates/atc-server/tests/*`). Save artifacts (logs + JSON outputs) as evidence for safety review.
+
+### 6.7 External Audit Claims Not Merged (Resolved / Not Found)
 
 - **Geofence CRUD public**: now admin‑authenticated in `atc-drone` routes.
 - **RID view update public**: now admin‑authenticated in `atc-drone` routes.
@@ -299,6 +314,8 @@ Legend:
 - Request-ID propagation everywhere — **TODO** (partial)
 - CI gates: Rust fmt/clippy/test; Python compile/tests; Node lint/smoke — **TODO**
 - CI should run ignored integration tests (telemetry/conflict/geofence) — **TODO**
+- Safety validation suite: geometry/CPA/AGL property tests in `atc-core` + API regressions in `atc-server` — **TODO**
+- Deterministic safety scenario regression harness (CLI + `tools/e2e_demo.sh`) — **TODO**
 - Secrets scanning allowlist for test/vendor cert keys — **TODO**
 
 ### P3 (quality / maintainability)
