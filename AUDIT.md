@@ -708,7 +708,7 @@ F-FRONTEND-017 — **P0 / Security**: Planner XSS via unescaped `innerHTML` from
   - `flight_blender/settings.py` requires `SECRET_KEY` when `IS_DEBUG=0`, rejects some placeholder `SECRET_KEY` values (see F-BLENDER-018 for gaps), and forbids `BYPASS_AUTH_TOKEN_VERIFICATION` when `IS_DEBUG=0`.
 
 **Open risks / work**
-- JWKS fetching/caching: avoid per-request external fetch patterns (availability dependency + amplification).
+- JWKS issuer validation still needed (JWKS caching/backoff is now implemented; see **F-BLENDER-002**).
 - Key material clarity: separate Django `SECRET_KEY` from JWT signing key(s).
 - Ensure DSS schema/boot is stable under the selected CockroachDB version and migrations (avoid “backfill” footguns).
 - Blocking `time.sleep()` calls inside Django views (RID/USS paths) can tie up workers and create DoS risk.
@@ -732,12 +732,15 @@ F-BLENDER-001 — **P0 / Correctness + Safety**: Surveillance track generation f
 - Verify:
   - Regression test feeding a sample observation `(lat=33.6846, lon=-117.8265, alt_mm=10000)` and asserting emitted track uses `lon=-117.8265` and altitude in meters.
 
-F-BLENDER-002 — **P1 / Security + Availability**: Auth middleware fetches JWKS on every request and does not validate issuer
+F-BLENDER-002 — **P1 / Security + Availability (PARTIALLY FIXED)**: Auth middleware fetches JWKS on every request and does not validate issuer
 - Where:
   - `atc-blender/auth_helper/utils.py:44`–`139` (`requires_scopes` fetches Passport + DSS JWKS for each request)
 - Why it matters:
   - Per-request JWKS fetch makes every API call depend on external JWKS availability and can amplify load on the JWKS server (and your own service under latency).
   - `jwt.decode(... options={"require": ["exp","iss","aud"]})` requires `iss` but does not validate it against an expected issuer value.
+- Status:
+  - **DONE**: JWKS fetch is cached with TTL + backoff (no longer fetched on every request), and “keys unavailable” fails closed with 503.
+  - **TODO**: validate issuer (`iss`) against an allowlist (Passport issuer + DSS issuer) so tokens from unexpected issuers are rejected.
 - Fix:
   - Cache JWKS with TTL + background refresh + backoff; fail closed with 503 if keys are unavailable rather than 400.
   - Validate issuer (`iss`) explicitly against a configured allowlist (Passport issuer + DSS issuer).
@@ -1265,8 +1268,10 @@ Legend:
    - `atc-frontend/server.js` now fails closed in prod and disables guest one-click login.
    - `atc-frontend/util/user-store.js` adds `countUsers()` to support “DB empty” bootstrap checks.
 
-4) Stop per-request JWKS fetch in Blender auth (cache + TTL + backoff) — **TODO**
-   - `atc-blender/auth_helper/utils.py`
+4) Stop per-request JWKS fetch in Blender auth (cache + TTL + backoff) — **DONE**
+   - `atc-blender/auth_helper/utils.py` now caches JWKS (TTL + backoff) and uses a single forced refresh only when `kid` is missing.
+   - `atc-blender/tests/test_jwks_cache.py` covers TTL caching + backoff behavior.
+   - Note: issuer allowlist validation remains **TODO** (see **F-BLENDER-002**).
 
 5) Separate Django secret from JWT signing key — **TODO**
    - `atc-blender/flight_blender/settings.py`
