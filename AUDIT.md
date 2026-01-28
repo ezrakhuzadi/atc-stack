@@ -458,7 +458,7 @@ F-DRONE-032 — **P2 / Launch readiness**: Integration tests exist but are not r
   - Geofence CRUD + `POST /v1/rid/view`
 
 **Open risks / work**
-- “Default users” / guest login must fail closed in production.
+- “Default users” / guest login now fails closed in production: close **F-FRONTEND-005**.
 - WebSocket Origin hardening (CSWSH) should be explicit.
 - Login throttling / brute force defense.
 - CSP currently allows `style-src 'unsafe-inline'` (and inline script attributes); weakens XSS posture.
@@ -523,11 +523,18 @@ F-FRONTEND-004 — **P1 / Security**: No brute-force protection on login / signu
   - Integration test that repeated bad logins get 429.
   - Load test ensuring login route stays responsive under attack.
 
-F-FRONTEND-005 — **P1 / Security + Launch readiness**: Default users + guest login are one env-var away from shipping to prod
+F-FRONTEND-005 — **P1 / Security + Launch readiness (FIXED)**: Default users + guest login are one env-var away from shipping to prod
 - Where:
   - `atc-frontend/server.js:324`–`349` (default `admin@example.com/admin123` and `guest@example.com/guest123` seeded when `ATC_ALLOW_DEFAULT_USERS=1` or when bootstrap env vars are missing and defaults are allowed)
   - `atc-frontend/server.js:600`–`621` (guest one-click login)
 - Why it matters: this is a common “demo to prod” trap; if a deploy accidentally keeps defaults, the UI is compromised immediately.
+- Status: fixed in `atc-frontend/server.js`:
+  - In production (`NODE_ENV=production`):
+    - process refuses to start if `ATC_ALLOW_DEFAULT_USERS=1`
+    - process refuses to start when user DB is empty unless explicit `ATC_BOOTSTRAP_ADMIN_EMAIL` + `ATC_BOOTSTRAP_ADMIN_PASSWORD` are set
+    - process refuses to start if bootstrap passwords match known placeholders (`admin123`, `guest123`)
+    - process refuses to start if existing `admin`/`guest` accounts still use known default passwords
+    - guest one-click login is disabled (route not registered) and login page hides the guest option
 - Fix:
   - Fail closed in production: if `NODE_ENV=production`, refuse to start when `ATC_ALLOW_DEFAULT_USERS=1`, and refuse to enable guest login.
   - Require explicit bootstrap admin credentials in production (no fallback).
@@ -1254,8 +1261,9 @@ Legend:
    - `atc-drone/crates/atc-server/src/main.rs` now rejects placeholder admin/registration/WS tokens in non-development.
    - Keep `.env.example` demo-only; production deploy docs must require replacing placeholders (still recommended).
 
-3) Fail closed on default users / guest login in production — **TODO**
-   - `atc-frontend/server.js`
+3) Fail closed on default users / guest login in production — **DONE**
+   - `atc-frontend/server.js` now fails closed in prod and disables guest one-click login.
+   - `atc-frontend/util/user-store.js` adds `countUsers()` to support “DB empty” bootstrap checks.
 
 4) Stop per-request JWKS fetch in Blender auth (cache + TTL + backoff) — **TODO**
    - `atc-blender/auth_helper/utils.py`
