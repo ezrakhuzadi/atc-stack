@@ -276,11 +276,18 @@ F-DRONE-012 — **P2 / UX + Debuggability**: “ATC-drone down but geofences sti
 - Fix: surface source + freshness in the UI (local vs Blender vs conflict geofence) and add “data stale” banners when `atc-drone` is unreachable.
 - Verify: kill `atc-drone` container and confirm UI clearly indicates stale geofence source/freshness.
 
-F-DRONE-013 — **P0 / Security**: Fail closed on placeholder/shared-secret defaults in production
-- Where: `atc-drone/crates/atc-server/src/main.rs` currently fails on `ATC_ADMIN_TOKEN=change-me-admin` but does not fail on placeholder `ATC_REGISTRATION_TOKEN` / `ATC_WS_TOKEN`.
+F-DRONE-013 — **P0 / Security (FIXED)**: Fail closed on placeholder/shared-secret defaults in production
+- Where:
+  - `atc-drone/crates/atc-server/src/main.rs` rejects:
+    - `ATC_ADMIN_TOKEN=change-me-admin`
+    - `ATC_REGISTRATION_TOKEN=change-me-registration-token`
+    - `ATC_WS_TOKEN=change-me-ws-token`
+  - Also fails fast when `ATC_REQUIRE_WS_TOKEN` is enabled but `ATC_WS_TOKEN` is missing (prevents “WS locked by empty expected token” misconfig).
 - Why it matters: “change-me-*” tokens are widely known; leaving them in production makes auth effectively useless.
-- Fix: extend the production validation block to reject placeholder values for `ATC_REGISTRATION_TOKEN`, `ATC_WS_TOKEN`, and any other shared secrets used by `atc-drone`.
-- Verify: boot server with `ATC_ENV=production` and placeholder tokens → process should exit with a clear error.
+- Fix: implemented fail-closed checks for the known placeholder defaults for admin, registration, and WS tokens.
+- Verify:
+  - Boot server with `ATC_ENV=production` and placeholder tokens → process exits with a clear error.
+  - Boot server with `ATC_ENV=production`, `ATC_REQUIRE_WS_TOKEN=true`, but no `ATC_WS_TOKEN` → process exits with a clear error.
 
 F-DRONE-014 — **P1 / Reliability + Safety**: Disabling command ACK timeouts can create “never-clearing” command queues
 - Where: `atc-drone/crates/atc-server/src/state/store.rs` (`command_waiting_for_ack` treats `ack_timeout<=0` as “wait forever”), `atc-drone/crates/atc-server/src/persistence/commands.rs` (`delete_stale_commands` no-ops when `ack_timeout_secs<=0`)
@@ -1243,9 +1250,9 @@ Legend:
    - `atc-drone/crates/atc-server/src/api/routes.rs`
    - `atc-frontend/server.js` token injection + role gate
 
-2) Fail closed on placeholder/shared-secret defaults in production — **TODO**
-   - `atc-drone/crates/atc-server/src/main.rs` (extend the existing `change-me-admin` guard to WS + registration tokens)
-   - `.env.example` / deployment docs (document required secrets)
+2) Fail closed on placeholder/shared-secret defaults in production — **DONE**
+   - `atc-drone/crates/atc-server/src/main.rs` now rejects placeholder admin/registration/WS tokens in non-development.
+   - Keep `.env.example` demo-only; production deploy docs must require replacing placeholders (still recommended).
 
 3) Fail closed on default users / guest login in production — **TODO**
    - `atc-frontend/server.js`
