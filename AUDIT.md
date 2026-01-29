@@ -388,11 +388,14 @@ F-DRONE-020 — **P0 / Safety + Compliance**: Route planner uses inconsistent AG
 - Fix: derive `faa_limit_agl` from a single authoritative config/rule (e.g., `SafetyRules.max_altitude_m` once AGL is correctly implemented). If you intentionally allow emergency ceilings, it must be explicit (`emergency_ceiling_agl_m`) and auditable.
 - Verify: tests that planned routes never exceed configured ceilings; integration tests covering conflict reroutes.
 
-F-DRONE-021 — **P0 / Security**: `owner_id` is effectively unauthenticated and can be spoofed via telemetry
+F-DRONE-021 — **P0 / Security (FIXED)**: `owner_id` is effectively unauthenticated and can be spoofed via telemetry
 - Where: `atc-drone/crates/atc-server/src/state/store.rs` (`update_telemetry` writes `drone_owners` from `telemetry.owner_id` and `DroneState::update` accepts it)
 - Why it matters: any drone with a valid session token can change its `owner_id`, undermining owner-based filtering and any future RBAC. It can also cause cross-tenant data exposure if owner_id is ever used as an authorization boundary.
-- Fix: treat `owner_id` as control-plane identity set at registration and immutable from telemetry. Reject or ignore telemetry-provided `owner_id`, or require an authenticated operator action to change ownership.
-- Verify: test that telemetry with a different `owner_id` does not change stored ownership.
+- Fix (implemented):
+  - `update_telemetry` now treats `owner_id` as control-plane identity and overwrites `telemetry.owner_id` from server state (`drone_owners` cache or the existing `DroneState`) before updating/broadcasting.
+  - Telemetry can no longer set or change ownership.
+- Verify:
+  - Unit test `telemetry_cannot_spoof_owner_id` (in `atc-drone/crates/atc-server/src/api/tests.rs`) ensures telemetry with a spoofed `owner_id` does not change the stored owner.
 
 F-DRONE-022 — **P1 / Safety**: Geofence validation is incomplete (can accept malformed polygons)
 - Where: `atc-drone/crates/atc-core/src/models.rs` (`Geofence::validate`)
@@ -1375,8 +1378,9 @@ Legend:
    - `atc-drone/crates/atc-server/src/main.rs` applies a global body limit layer (`DefaultBodyLimit`) to reject oversized JSON payloads.
    - `/v1/geofences/check-route` is now admin-authenticated, rate-limited, and validates waypoint counts + numeric ranges.
 
-15) Ownership/tenancy correctness (`owner_id` must not be telemetry-writable) — **TODO**
-   - `atc-drone/crates/atc-server/src/state/store.rs` (`update_telemetry` should not accept `owner_id` mutations)
+15) Ownership/tenancy correctness (`owner_id` must not be telemetry-writable) — **DONE**
+   - `atc-drone/crates/atc-server/src/state/store.rs` `update_telemetry` ignores telemetry-provided `owner_id` and uses the server-owned value.
+   - Regression test: `atc-drone/crates/atc-server/src/api/tests.rs` `telemetry_cannot_spoof_owner_id`.
 
 16) Conflict/conformance reroute safety fallback — **TODO**
    - If planning fails, prefer HOLD; do not issue unvalidated reroutes
