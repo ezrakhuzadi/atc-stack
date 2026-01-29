@@ -1280,9 +1280,9 @@ Legend:
    - `atc-blender/flight_feed_operations/views.py` `/signing_public_key` now serves `OIDC_SIGNING_PUBLIC_JWKS` derived from the signing key, not Django secret.
    - `atc-blender/flight_feed_operations/pki_helper.py` `sign_json_via_jose` uses `OIDC_SIGNING_PRIVATE_KEY_PEM`.
 
-6) DB-failure backoff for write-heavy loops — **TODO**
-   - `atc-drone/crates/atc-server/src/loops/telemetry_persist_loop.rs`
-   - `atc-drone/crates/atc-server/src/loops/operational_intent_expiry_loop.rs`
+6) DB-failure backoff for write-heavy loops — **DONE**
+   - `atc-drone/crates/atc-server/src/loops/telemetry_persist_loop.rs` uses `Backoff` to avoid tight retry loops when DB writes fail.
+   - `atc-drone/crates/atc-server/src/loops/operational_intent_expiry_loop.rs` uses `Backoff` to avoid tight retry loops when DB operations fail.
 
 7) Drone token rotation / recovery flow — **TODO**
    - `atc-drone` + `mavlink-gateway`
