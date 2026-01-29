@@ -173,11 +173,12 @@ This audit uses three layers:
   - Implemented in `atc-drone/crates/atc-server/src/api/routes.rs`
 - SQLite command expiry filtering now parses RFC3339 correctly (`datetime(expires_at) ...`) and has a regression test:
   - `atc-drone/crates/atc-server/src/persistence/commands.rs`
+- Geometry correctness fixes (no sampling shortcuts in safety checks):
+  - `atc-drone/crates/atc-core/src/models.rs` `Geofence::intersects_segment` now uses exact segment–polygon intersection (local ENU) plus altitude band overlap (no sampling).
+  - `atc-drone/crates/atc-core/src/spatial.rs` `segment_to_segment_distance` now detects true crossings (distance=0 on intersection).
 
 **Open risks / work**
 - Conflict prediction uses 1‑second discrete sampling; can miss true closest‑approach between samples at higher relative speeds.
-- Geofence `intersects_segment` uses sampling (25m step, max 200 steps); long legs can miss narrow geofences.
-- `segment_to_segment_distance` checks only endpoints vs segments; crossing segments can report non‑zero distance.
 - Telemetry timestamps are normalized to server time before validation; stale/future telemetry can appear “fresh.”
 - `ConflictSeverity::Info` exists but is not emitted by the predictor (Warning/Critical only).
 - `ATC_ALTITUDE_REFERENCE=AGL` is explicitly unsupported and falls back to AMSL; safety rules compare altitude directly (Part 107 is AGL).
@@ -205,17 +206,33 @@ F-DRONE-001 — **P0 / Safety**: Conflict prediction can miss the true CPA (1s d
 - Fix: replace the loop `for t in 0..=lookahead` with analytic CPA (relative position/velocity) or adaptive sampling (step size shrinks with closing speed). Keep a conservative bound (sample around t* or compute distance bounds) so you never miss a violation.
 - Verify: add unit tests that construct a near-miss between integer seconds (expected: conflict detected); add property tests vs a reference CPA implementation for randomized cases.
 
-F-DRONE-002 — **P0 / Safety**: Geofence intersection can be missed (sampling-based)
+F-DRONE-002 — **P0 / Safety (FIXED)**: Geofence intersection could be missed (sampling-based)
 - Where: `atc-drone/crates/atc-core/src/models.rs` (`Geofence::intersects_segment`), `atc-drone/crates/atc-core/src/route_engine.rs` (`geofence_blocks_segment`)
 - Why it matters: long legs clamp to max 200 samples; narrow geofences can be crossed between samples → false “clear route”.
-- Fix: implement exact segment–polygon intersection in a local ENU projection (check segment-edge intersections + endpoint-in-polygon), plus altitude band overlap. Sampling can remain as a fallback behind a “safe mode” feature flag, but must not be the safety gate.
-- Verify: tests for (a) narrow geofence crossed mid-segment, (b) long leg crossing, (c) touching boundary, (d) altitude-only intersections.
+- Fix (implemented):
+  - `Geofence::intersects_segment` now:
+    - clips the segment to the parametric interval where altitude is inside the geofence altitude band, and
+    - checks endpoint-in-polygon OR segment–polygon-edge intersection using a local ENU projection (no sampling).
+  - Added unit tests in `atc-drone/crates/atc-core/src/models.rs`:
+    - `geofence_intersects_segment_detects_crossing_between_samples`
+    - `geofence_intersects_segment_requires_horizontal_and_altitude_overlap_at_same_time`
+- Verify:
+  - `cargo test -p atc-core` includes the new tests and must pass.
+  - Recommended follow-up: property-based fuzzing for segment-edge intersection and additional boundary-touching cases.
 
-F-DRONE-003 — **P0 / Safety**: Strategic deconfliction can accept intersecting routes (bad segment distance)
+F-DRONE-003 — **P0 / Safety (FIXED)**: Strategic deconfliction could accept intersecting routes (bad segment distance)
 - Where: `atc-drone/crates/atc-core/src/spatial.rs` (`segment_to_segment_distance`)
 - Why it matters: current implementation checks endpoint-to-segment distances only; crossing segments (an “X”) can return non-zero distance → false “no conflict”.
-- Fix: implement proper segment-segment intersection test; distance=0 if they intersect; else min of endpoint-to-segment distances. Run in projected meters (ENU) for numeric stability.
-- Verify: unit tests for crossing segments (must be 0), overlapping colinear, parallel offset, endpoint touch.
+- Fix (implemented):
+  - `segment_to_segment_distance` now:
+    - projects segments to local ENU meters,
+    - detects true segment intersection (distance=0), and
+    - falls back to endpoint-to-segment distances otherwise.
+  - Added unit test in `atc-drone/crates/atc-core/src/spatial.rs`:
+    - `segment_to_segment_distance_detects_crossing_segments`
+- Verify:
+  - `cargo test -p atc-core` includes the new test and must pass.
+  - Recommended follow-up: add tests for colinear overlap, parallel offset, and endpoint touch.
 
 F-DRONE-004 — **P0 / Safety + Product correctness**: Altitude reference is inconsistent (AGL unsupported; rules assume Part 107 AGL)
 - Where:
@@ -1167,10 +1184,10 @@ F-DSS-011 — **P1 / Reliability**: JWKS refresh failure panics and can take dow
 **Why this matters:** current findings list correctness risks (sampling-based geometry/CPA, AGL ambiguity, timestamp normalization), but there is **insufficient verification evidence** that the safety logic is correct under worst‑case conditions. The gaps below are about *how to prove correctness* and *where in the codebase to anchor those proofs*.
 
 **Open risks / work (specific, code‑anchored):**
-- **Geometry correctness lacks proof:** add unit + property‑based tests targeting  
-  - `Geofence::intersects_segment` (sampling) in `atc-drone/crates/atc-core/src/models.rs`  
-  - `segment_to_segment_distance` in `atc-drone/crates/atc-core/src/spatial.rs`  
-  Recommended: create `atc-drone/crates/atc-core/tests/geometry.rs` with crossing‑segment cases, narrow‑polygon misses, and a test‑only reference implementation (e.g., `geo` crate) for cross‑checking.
+- **Geometry correctness now has a non-sampling implementation, but still needs stronger proof:**  
+  - `Geofence::intersects_segment` is now exact (no sampling) and has unit tests in `atc-drone/crates/atc-core/src/models.rs`.
+  - `segment_to_segment_distance` now detects crossings and has a unit test in `atc-drone/crates/atc-core/src/spatial.rs`.
+  Recommended: add property‑based tests (and optionally cross-check against a reference geometry crate like `geo`) in a dedicated `atc-drone/crates/atc-core/tests/geometry.rs`.
 - **Conflict CPA correctness not validated:** `atc-drone/crates/atc-core/src/conflict.rs` currently samples 1‑second steps. When replacing with analytic CPA or adaptive sampling, add regression tests in `conflict.rs` plus integration coverage in `atc-drone/crates/atc-server/tests/conflict_test.rs` for “near‑miss between samples” scenarios.
 - **Telemetry time semantics not verified:** `normalize_telemetry_timestamp` in `atc-drone/crates/atc-server/src/api/routes.rs` mutates out‑of‑bounds timestamps. Add API‑level tests in `atc-drone/crates/atc-server/tests/telemetry_test.rs` (or `src/api/tests.rs`) to assert rejection/flagging behavior once normalization is removed.
 - **Altitude reference (AGL/AMSL) lacks end‑to‑end tests:** conversion happens in `atc-drone/crates/atc-server/src/altitude.rs`, `state/store.rs`, and `route_planner.rs`. Add unit tests for conversion and integration tests that inject terrain to validate AGL ceilings (route planner + compliance).
@@ -1292,9 +1309,10 @@ Legend:
    - `atc-blender/flight_blender/settings.py` now rejects placeholder/weak `DJANGO_SECRET_KEY` values when `IS_DEBUG=0` (including any containing `change-me`, and short secrets).
    - `.env.example` stays demo-only but non-debug runtime fails fast if placeholders are used.
 
-9) Geometry correctness (no sampling shortcuts in safety checks) — **TODO**
-   - Replace `Geofence::intersects_segment` sampling with exact segment–polygon intersection
-   - Fix `segment_to_segment_distance` to detect crossing segments
+9) Geometry correctness (no sampling shortcuts in safety checks) — **DONE**
+   - `Geofence::intersects_segment` now uses exact segment–polygon intersection (local ENU) plus altitude overlap clipping (no sampling).
+   - `segment_to_segment_distance` now detects true crossings (distance=0 on intersection).
+   - Unit tests added in `atc-drone/crates/atc-core/src/models.rs` and `atc-drone/crates/atc-core/src/spatial.rs`.
 
 10) Conflict prediction must be continuous (CPA) — **TODO**
    - Replace 1‑second sampling with analytic CPA or adaptive sampling
