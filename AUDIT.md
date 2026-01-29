@@ -186,14 +186,15 @@ This audit uses three layers:
   - `atc-drone/crates/atc-server/src/api/routes.rs` now validates the client-provided timestamp as-is (rejects too-old/too-far-future) and uses server receipt time for `last_update`.
 - Operational read endpoints now require admin auth (no public live ops data):
   - `atc-drone/crates/atc-server/src/api/routes.rs` moved `/v1/drones`, `/v1/traffic`, `/v1/conflicts`, `/v1/daa`, `/v1/flights`, and `/v1/ws` behind `require_admin`.
+- DoS hardening for large/expensive requests:
+  - `atc-drone/crates/atc-server/src/main.rs` applies a global body limit (`DefaultBodyLimit`) for JSON endpoints.
+  - `/v1/geofences/check-route` is now admin-authenticated, rate-limited, and validates waypoint counts + numeric ranges.
 
 **Open risks / work**
 - `ConflictSeverity::Info` exists but is not emitted by the predictor (Warning/Critical only).
-- `/v1/geofences/check-route` is public and not rate‑limited; accepts arbitrary waypoint counts.
 - WS token can be passed via query param (leak‑prone; prefer Authorization header/cookie).
 - WS broadcast uses a bounded channel; lagged subscribers drop messages (no replay).
 - Command IDs are truncated to 8 chars of UUID (collision risk at scale).
-- No explicit HTTP body size limits on the API layer (DoS surface).
 - Blender OAuth client uses `reqwest::Client::new()` (no timeouts); can hang critical loops.
 - Compliance HTTP client falls back to `Client::new()` on builder failure (loses timeout).
 - SDK client uses `Client::new()` (no timeouts) and does not enforce HTTPS in production.
@@ -285,11 +286,14 @@ F-DRONE-006 — **P0 / Security + Privacy (FIXED)**: Operational “read” endp
   - `curl /v1/drones` (no Authorization header) returns 401/403.
   - Control Center still loads fleet/traffic/conflicts through its proxy with `ATC_ADMIN_TOKEN` set.
 
-F-DRONE-007 — **P0 / Security**: Missing global request body size limits (DoS surface)
-- Where: `atc-drone/crates/atc-server/src/main.rs` (no body limit layer), multiple JSON POST endpoints
+F-DRONE-007 — **P0 / Security (FIXED)**: Missing global request body size limits (DoS surface)
+- Where: `atc-drone/crates/atc-server/src/main.rs` (app builder), multiple JSON POST endpoints
 - Why it matters: large JSON bodies can exhaust memory/CPU before per-field validation kicks in.
-- Fix: add an explicit request body limit layer (e.g., 1–5MB depending on endpoints) and stricter per-endpoint limits for route planning/compliance.
-- Verify: tests that oversized payloads fail fast with 413.
+- Fix (implemented):
+  - Added a global Axum body limit using `DefaultBodyLimit::max(1 * 1024 * 1024)` so oversized payloads fail fast with 413.
+- Verify:
+  - Manual: send a payload larger than 1MiB to any JSON endpoint and confirm `413 Payload Too Large`.
+  - Recommended follow-up: add an API regression test that asserts 413.
 
 F-DRONE-008 — **P1 / Security**: WebSocket token accepted via query param (leak-prone)
 - Where: `atc-drone/crates/atc-server/src/api/ws.rs` (`WsQuery { token }`), `atc-drone/crates/atc-server/src/api/commands.rs` (`CommandStreamQuery { token }`)
@@ -340,11 +344,17 @@ F-DRONE-014 — **P1 / Reliability + Safety**: Disabling command ACK timeouts ca
 - Fix: enforce `ATC_COMMAND_ACK_TIMEOUT_SECS > 0` in production; also ensure every command has an explicit expiry and a max queue length per drone.
 - Verify: integration test that a non-acking drone cannot accumulate >N commands and that stale commands are purged deterministically.
 
-F-DRONE-015 — **P1 / Security + DoS**: `/v1/geofences/check-route` is public and accepts unbounded waypoint arrays
-- Where: `atc-drone/crates/atc-server/src/api/routes.rs` (public route), `atc-drone/crates/atc-server/src/api/geofences.rs` (`check_route`)
-- Why it matters: attacker can submit huge waypoint lists → O(segments × geofences) CPU burn; also uses sampling-based `intersects_segment` (already a P0 safety risk).
-- Fix: apply the “expensive” rate limiter (or require admin) and add strict input validation (max waypoints, lat/lon finite and in range, altitude finite). Consider caching by request hash.
-- Verify: load test with large inputs should be rejected quickly; regression tests for limits.
+F-DRONE-015 — **P1 / Security + DoS (FIXED)**: `/v1/geofences/check-route` was public and accepted unbounded waypoint arrays
+- Where: `atc-drone/crates/atc-server/src/api/routes.rs`, `atc-drone/crates/atc-server/src/api/geofences.rs` (`check_route`)
+- Why it matters: attacker can submit huge waypoint lists → O(segments × geofences) CPU burn.
+- Fix (implemented):
+  - Moved `/v1/geofences/check-route` behind `require_admin` and the “expensive” rate limiter.
+  - Added strict request validation in `check_route`:
+    - `2 <= waypoints.len() <= route_planner_max_waypoints`
+    - lat/lon finite and in range; altitude finite.
+- Verify:
+  - Unit test `create_geofence_and_check_route` (in `atc-drone/crates/atc-server/src/api/tests.rs`) now uses admin auth.
+  - Recommended follow-up: add a negative test for `waypoints.len() > route_planner_max_waypoints` returning 400.
 
 F-DRONE-016 — **P1 / Reliability**: OAuth token fetch has no HTTP timeout (can hang critical loops)
 - Where: `atc-drone/crates/atc-server/src/blender_auth.rs` (`BlenderAuthManager::new` uses `reqwest::Client::new()`, `fetch_oauth_token` uses `.send().await` without timeout)
@@ -1361,9 +1371,9 @@ Legend:
    - `atc-drone` now protects `/v1/drones`, `/v1/traffic`, `/v1/conflicts`, `/v1/conformance`, `/v1/daa`, `/v1/flights`, and `/v1/ws` behind `require_admin`.
    - `atc-frontend/server.js` now sends `ATC_ADMIN_TOKEN` on those reads and the WS proxy upstream.
 
-14) Add request body limits + input caps — **TODO**
-   - Add global body limit layer in `atc-drone/crates/atc-server/src/main.rs`
-   - Add strict caps to `/v1/geofences/check-route` (or move behind admin)
+14) Add request body limits + input caps — **DONE**
+   - `atc-drone/crates/atc-server/src/main.rs` applies a global body limit layer (`DefaultBodyLimit`) to reject oversized JSON payloads.
+   - `/v1/geofences/check-route` is now admin-authenticated, rate-limited, and validates waypoint counts + numeric ranges.
 
 15) Ownership/tenancy correctness (`owner_id` must not be telemetry-writable) — **TODO**
    - `atc-drone/crates/atc-server/src/state/store.rs` (`update_telemetry` should not accept `owner_id` mutations)
@@ -1382,8 +1392,8 @@ Legend:
 - Flight-plan conflict duration correctness (avoid fixed fallback) — **TODO**
 - Gateway: backoff + command expiry — **TODO**
 - Logout should be POST + CSRF-protected — **TODO**
-- Rate-limit or auth‑gate `/v1/geofences/check-route` — **TODO**
-- Reduce public exposure of operational data endpoints — **TODO**
+- Rate-limit or auth‑gate `/v1/geofences/check-route` — **DONE** (moved to P0)
+- Reduce public exposure of operational data endpoints — **DONE** (moved to P0)
 - Add HTTP client timeouts across SDK/Blender/Compliance callers — **TODO**
 - Persist flight plan status transitions (mission loop) — **TODO**
 - Enforce `ATC_COMMAND_ACK_TIMEOUT_SECS > 0` and cap pending commands per drone — **TODO**
