@@ -1284,8 +1284,9 @@ Legend:
    - `atc-drone/crates/atc-server/src/loops/telemetry_persist_loop.rs` uses `Backoff` to avoid tight retry loops when DB writes fail.
    - `atc-drone/crates/atc-server/src/loops/operational_intent_expiry_loop.rs` uses `Backoff` to avoid tight retry loops when DB operations fail.
 
-7) Drone token rotation / recovery flow — **TODO**
-   - `atc-drone` + `mavlink-gateway`
+7) Drone token rotation / recovery flow — **DONE**
+   - `atc-drone` exposes `POST /v1/admin/drones/:drone_id/token/rotate` (admin-auth) to rotate a drone session token.
+   - `atc-drone/crates/atc-sdk` adds `AtcClient::rotate_drone_token_admin` to consume the endpoint (gateway/client-side wiring still required where applicable).
 
 8) Fail closed on placeholder secrets when not debug — **TODO**
    - `atc-blender/flight_blender/settings.py`
