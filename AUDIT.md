@@ -184,11 +184,12 @@ This audit uses three layers:
   - `atc-drone/crates/atc-server/src/route_planner.rs` uses `state.rules().max_altitude_m` for the route-engine `faa_limit_agl` (removes the hardcoded `500.0`).
 - Telemetry time semantics (no “normalize to now”):
   - `atc-drone/crates/atc-server/src/api/routes.rs` now validates the client-provided timestamp as-is (rejects too-old/too-far-future) and uses server receipt time for `last_update`.
+- Operational read endpoints now require admin auth (no public live ops data):
+  - `atc-drone/crates/atc-server/src/api/routes.rs` moved `/v1/drones`, `/v1/traffic`, `/v1/conflicts`, `/v1/daa`, `/v1/flights`, and `/v1/ws` behind `require_admin`.
 
 **Open risks / work**
 - `ConflictSeverity::Info` exists but is not emitted by the predictor (Warning/Critical only).
 - `/v1/geofences/check-route` is public and not rate‑limited; accepts arbitrary waypoint counts.
-- Public read endpoints expose operational data (`/v1/traffic`, `/v1/conflicts`, `/v1/daa`, `/v1/drones`).
 - WS token can be passed via query param (leak‑prone; prefer Authorization header/cookie).
 - WS broadcast uses a bounded channel; lagged subscribers drop messages (no replay).
 - Command IDs are truncated to 8 chars of UUID (collision risk at scale).
@@ -274,13 +275,15 @@ F-DRONE-005 — **P0 / Safety (FIXED)**: Telemetry timestamps were normalized to
   - Unit tests: `cargo test -p atc-server` must pass.
   - Manual: send telemetry with a timestamp older than `ATC_TELEMETRY_MAX_AGE_S` and confirm it returns 400 and does not update drone `last_update`.
 
-F-DRONE-006 — **P0 / Security + Privacy**: Operational “read” endpoints are public
-- Where: `atc-drone/crates/atc-server/src/api/routes.rs` public router includes `/v1/drones`, `/v1/traffic`, `/v1/conflicts`, `/v1/daa`, etc.
+F-DRONE-006 — **P0 / Security + Privacy (FIXED)**: Operational “read” endpoints were public
+- Where: `atc-drone/crates/atc-server/src/api/routes.rs`
 - Why it matters: live locations/conflicts are sensitive operational data; public access enables surveillance and targeting.
-- Fix: decide the launch posture:
-  - If `atc-drone` is *not* directly internet-exposed: enforce network isolation + firewall rules and document it as a hard launch prerequisite.
-  - If internet-exposed: require auth (admin token or real RBAC/JWT) for all endpoints returning operational state; keep only `/health` and `/ready` public.
-- Verify: integration tests that anonymous requests to operational endpoints return 401/403 in production config.
+- Fix (implemented):
+  - `/v1/drones`, `/v1/traffic`, `/v1/conflicts`, `/v1/conformance`, `/v1/daa`, `/v1/flights`, and `/v1/ws` are now behind `auth::require_admin`.
+  - `atc-frontend` now attaches `ATC_ADMIN_TOKEN` on those reads and on the WS proxy upstream.
+- Verify:
+  - `curl /v1/drones` (no Authorization header) returns 401/403.
+  - Control Center still loads fleet/traffic/conflicts through its proxy with `ATC_ADMIN_TOKEN` set.
 
 F-DRONE-007 — **P0 / Security**: Missing global request body size limits (DoS surface)
 - Where: `atc-drone/crates/atc-server/src/main.rs` (no body limit layer), multiple JSON POST endpoints
@@ -1354,8 +1357,9 @@ Legend:
    - `atc-drone/crates/atc-server/src/api/routes.rs` now validates client timestamps and no longer “normalizes to now” before validation.
    - Stored `last_update` uses server receipt time after validation, so timeouts do not trust client clocks.
 
-13) Lock down operational data exposure — **TODO**
-   - Require auth / network-isolate: `/v1/drones`, `/v1/traffic`, `/v1/conflicts`, `/v1/daa`, `/v1/flights`, `/v1/ws`
+13) Lock down operational data exposure — **DONE**
+   - `atc-drone` now protects `/v1/drones`, `/v1/traffic`, `/v1/conflicts`, `/v1/conformance`, `/v1/daa`, `/v1/flights`, and `/v1/ws` behind `require_admin`.
+   - `atc-frontend/server.js` now sends `ATC_ADMIN_TOKEN` on those reads and the WS proxy upstream.
 
 14) Add request body limits + input caps — **TODO**
    - Add global body limit layer in `atc-drone/crates/atc-server/src/main.rs`
