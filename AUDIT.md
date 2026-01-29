@@ -179,11 +179,13 @@ This audit uses three layers:
 - Conflict prediction now uses continuous-time CPA (no 1s miss-between-samples risk):
   - `atc-drone/crates/atc-core/src/conflict.rs` `predict_conflict` now computes the conflict window analytically and minimizes distance within that window (constant-velocity model).
   - Added regression unit test `detects_near_miss_between_whole_seconds`.
+- Altitude semantics: AGL limits enforced when terrain is required:
+  - `atc-drone/crates/atc-server/src/api/altitude_validation.rs` enforces SafetyRules min/max altitude against AGL (`altitude_amsl - terrain_elevation`) when `ATC_TERRAIN_REQUIRE=1` (fails closed if terrain fetch fails).
+  - `atc-drone/crates/atc-server/src/route_planner.rs` uses `state.rules().max_altitude_m` for the route-engine `faa_limit_agl` (removes the hardcoded `500.0`).
 
 **Open risks / work**
 - Telemetry timestamps are normalized to server time before validation; stale/future telemetry can appear “fresh.”
 - `ConflictSeverity::Info` exists but is not emitted by the predictor (Warning/Critical only).
-- `ATC_ALTITUDE_REFERENCE=AGL` is explicitly unsupported and falls back to AMSL; safety rules compare altitude directly (Part 107 is AGL).
 - `/v1/geofences/check-route` is public and not rate‑limited; accepts arbitrary waypoint counts.
 - Public read endpoints expose operational data (`/v1/traffic`, `/v1/conflicts`, `/v1/daa`, `/v1/drones`).
 - WS token can be passed via query param (leak‑prone; prefer Authorization header/cookie).
@@ -242,14 +244,22 @@ F-DRONE-003 — **P0 / Safety (FIXED)**: Strategic deconfliction could accept in
   - `cargo test -p atc-core` includes the new test and must pass.
   - Recommended follow-up: add tests for colinear overlap, parallel offset, and endpoint touch.
 
-F-DRONE-004 — **P0 / Safety + Product correctness**: Altitude reference is inconsistent (AGL unsupported; rules assume Part 107 AGL)
+F-DRONE-004 — **P0 / Safety + Product correctness (FIXED)**: Altitude reference / altitude limits were inconsistent (AGL vs AMSL)
 - Where:
   - `atc-drone/crates/atc-server/src/config.rs` (logs “AGL unsupported; using AMSL”)
   - `atc-drone/crates/atc-server/src/altitude.rs` (only WGS84↔AMSL)
   - Rules/validation: `atc-drone/crates/atc-core/src/rules.rs`, `atc-drone/crates/atc-server/src/api/flights.rs`, `atc-drone/crates/atc-server/src/api/routes.rs`
+  - Planner ceiling: `atc-drone/crates/atc-server/src/route_planner.rs` (`RouteEngineConfig::faa_limit_agl`)
 - Why it matters: “400 ft limit” is AGL; comparing directly to AMSL/HAE is wrong away from sea level. You can incorrectly allow or reject plans.
-- Fix: define altitude semantics per API field (telemetry altitude reference; flight plan waypoint altitude reference). Add true AGL support: `AGL = AMSL - terrain_elevation`. If AGL is required and terrain data is missing → fail safe.
-- Verify: end-to-end tests with a mocked terrain provider and routes over non-zero terrain elevations.
+- Fix (implemented):
+  - Altitudes are still normalized to AMSL internally (WGS84↔AMSL conversion), but SafetyRules min/max altitude are enforced as **AGL** in production:
+    - `atc-drone/crates/atc-server/src/api/altitude_validation.rs` validates AGL (`altitude_amsl - terrain_elevation`) when `ATC_TERRAIN_REQUIRE=1` and fails closed on terrain fetch failure.
+  - The A* route engine’s AGL ceiling now uses the configured rules:
+    - `atc-drone/crates/atc-server/src/route_planner.rs` sets `faa_limit_agl = state.rules().max_altitude_m` (removes hardcoded `500.0`).
+  - Note: `ATC_ALTITUDE_REFERENCE` remains an *input* altitude reference selector (WGS84 vs AMSL). AGL is enforced as a limit using terrain, not as an input reference.
+- Verify:
+  - With `ATC_ENV=production` (or `ATC_TERRAIN_REQUIRE=1`), submit a route with a waypoint at `altitude_amsl = terrain + max_agl + 10` and confirm a blocking `altitude_agl` violation appears.
+  - Recommended follow-up: end-to-end tests with a mocked terrain provider over non-zero terrain elevations.
 
 F-DRONE-005 — **P0 / Safety**: Telemetry timestamps are normalized to “now” before validation (can mask stale/bad telemetry)
 - Where: `atc-drone/crates/atc-server/src/api/routes.rs` (`normalize_telemetry_timestamp`, called in `receive_telemetry`)
@@ -1328,9 +1338,10 @@ Legend:
    - `atc-drone/crates/atc-core/src/conflict.rs` now uses an analytic constant-velocity CPA model (no 1-second sampling).
    - Regression test added: `detects_near_miss_between_whole_seconds`.
 
-11) Altitude reference correctness (AGL support) — **TODO**
-   - AGL/AMSL ambiguity must be resolved end‑to‑end before real ops
-   - Remove hardcoded `faa_limit_agl: 500.0` in `plan_airborne_route` (derive from config/rules)
+11) Altitude reference correctness (AGL support) — **DONE**
+   - `atc-drone/crates/atc-server/src/api/altitude_validation.rs` enforces SafetyRules altitude bands as AGL when `ATC_TERRAIN_REQUIRE=1` (fails closed on terrain fetch failure).
+   - `atc-drone/crates/atc-server/src/route_planner.rs` now sets `RouteEngineConfig::faa_limit_agl = state.rules().max_altitude_m` (removes hardcoded `500.0`).
+   - Note: `ATC_ALTITUDE_REFERENCE` remains WGS84/AMSL input conversion; AGL is enforced via terrain-derived limits.
 
 12) Telemetry timestamp handling — **TODO**
    - Stop normalizing out‑of‑range timestamps to “now”; treat as invalid or degraded
