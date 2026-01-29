@@ -705,7 +705,7 @@ F-FRONTEND-017 — **P0 / Security**: Planner XSS via unescaped `innerHTML` from
 **Already fixed**
 - Removed Python `eval()` on Redis-loaded state (replaced with JSON + safe fallback parsing).
 - `atc-blender` fails closed on dangerous auth flags / placeholder secrets in non-debug:
-  - `flight_blender/settings.py` requires `SECRET_KEY` when `IS_DEBUG=0`, rejects some placeholder `SECRET_KEY` values (see F-BLENDER-018 for gaps), and forbids `BYPASS_AUTH_TOKEN_VERIFICATION` when `IS_DEBUG=0`.
+  - `flight_blender/settings.py` requires `DJANGO_SECRET_KEY` (or legacy `SECRET_KEY`) when `IS_DEBUG=0`, rejects placeholder/weak values, and forbids `BYPASS_AUTH_TOKEN_VERIFICATION` when `IS_DEBUG=0`.
 
 **Open risks / work**
 - JWKS issuer validation still needed (JWKS caching/backoff is now implemented; see **F-BLENDER-002**).
@@ -944,20 +944,20 @@ F-BLENDER-017 — **P2 / Ops + Reliability**: Default container entrypoints run 
 - Verify:
   - Production compose starts with stable worker count and no reload watcher; logs confirm expected mode.
 
-F-BLENDER-018 — **P0 / Security**: `SECRET_KEY` placeholder detection is incomplete; `atc-stack` default secret can slip into non-debug deployments
+F-BLENDER-018 — **P0 / Security (FIXED)**: Django secret placeholder detection was incomplete; `atc-stack` default secret could slip into non-debug deployments
 - Where:
   - `atc-stack/.env.example:72` defaults `BLENDER_SECRET_KEY=change-me-flight-blender-secret-key`
-  - `atc-stack/docker-compose.yml:349` passes `SECRET_KEY=${BLENDER_SECRET_KEY:-change-me-flight-blender-secret-key}`
-  - `atc-stack/atc-blender/flight_blender/settings.py:57`–`58` rejects only a small set of placeholder strings (does not catch `change-me-flight-blender-secret-key`)
+  - `atc-stack/docker-compose.yml:349` passes `DJANGO_SECRET_KEY=${BLENDER_SECRET_KEY:-change-me-flight-blender-secret-key}`
+  - `atc-stack/atc-blender/flight_blender/settings.py` now rejects placeholder/weak `DJANGO_SECRET_KEY` values when `IS_DEBUG=0` (including any containing `change-me`, and short secrets)
 - Why it matters:
   - Django’s `SECRET_KEY` protects session integrity and other signing operations. Shipping with a known placeholder means attacker-forgeable cookies/tokens.
   - This also makes the “sandbox vs production” boundary blurry: `IS_DEBUG=0` does **not** guarantee secrets are non-placeholder.
 - Fix:
   - Tighten the production guard in `flight_blender/settings.py`:
-    - reject any `SECRET_KEY` containing common placeholder patterns (`change-me`, `example`, etc) and/or enforce a minimum length/entropy check.
-  - In `atc-stack`, add a production profile that refuses to boot if `BLENDER_SECRET_KEY` matches the example default.
+    - reject any `DJANGO_SECRET_KEY` containing common placeholder patterns (`change-me`, `example`, etc) and enforce a minimum length check.
+  - Defense in depth: add a CI/prod-profile guard in `atc-stack` that fails if `BLENDER_SECRET_KEY` is still the example default (even though Blender now fails fast at runtime).
 - Verify:
-  - With `IS_DEBUG=0`, setting `SECRET_KEY=change-me-flight-blender-secret-key` causes a hard startup failure.
+  - With `IS_DEBUG=0`, setting `DJANGO_SECRET_KEY=change-me-flight-blender-secret-key` causes a hard startup failure.
 
 F-BLENDER-019 — **P1 / Ops + Reliability**: `ALLOWED_HOSTS` defaults are not aligned with this stack’s deployment topology (easy BadHost failures)
 - Where:
@@ -1214,7 +1214,7 @@ Evidence required:
 Pass criteria (must all be true):
 - **No public operational “read” endpoints** leaking live ops data unless explicitly intended and anonymized: close **F-DRONE-006**
 - **Request body limits + input caps** exist at the API edge: close **F-DRONE-007**
-- **Placeholder/default secrets are rejected in prod** (admin/ws/registration + Blender SECRET_KEY): close **F-DRONE-013**, **F-BLENDER-018**
+- **Placeholder/default secrets are rejected in prod** (admin/ws/registration + Blender `DJANGO_SECRET_KEY`): close **F-DRONE-013**, **F-BLENDER-018**
 - **Owner/tenant spoofing is impossible** (telemetry cannot mutate ownership): close **F-DRONE-021**
 - **WebSocket cannot silently become public** in prod configs: close **F-DRONE-025**
 - **Frontend XSS is closed** (planner + mission detail + inline handlers) and CSP is tightened accordingly: close **F-FRONTEND-001**, **F-FRONTEND-002**, **F-FRONTEND-016**, **F-FRONTEND-017**
@@ -1288,9 +1288,9 @@ Legend:
    - `atc-drone` exposes `POST /v1/admin/drones/:drone_id/token/rotate` (admin-auth) to rotate a drone session token.
    - `atc-drone/crates/atc-sdk` adds `AtcClient::rotate_drone_token_admin` to consume the endpoint (gateway/client-side wiring still required where applicable).
 
-8) Fail closed on placeholder secrets when not debug — **TODO**
-   - `atc-blender/flight_blender/settings.py`
-   - `.env.example` stays demo-only but runtime must reject placeholders in non-debug
+8) Fail closed on placeholder secrets when not debug — **DONE**
+   - `atc-blender/flight_blender/settings.py` now rejects placeholder/weak `DJANGO_SECRET_KEY` values when `IS_DEBUG=0` (including any containing `change-me`, and short secrets).
+   - `.env.example` stays demo-only but non-debug runtime fails fast if placeholders are used.
 
 9) Geometry correctness (no sampling shortcuts in safety checks) — **TODO**
    - Replace `Geofence::intersects_segment` sampling with exact segment–polygon intersection
