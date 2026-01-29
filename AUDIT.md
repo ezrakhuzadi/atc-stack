@@ -914,11 +914,13 @@ F-BLENDER-015 — **P1 / Security**: Signed-telemetry public key URLs are fetche
   - Security test: key URL pointing to `http://127.0.0.1/` is rejected; verification path never performs the fetch.
   - Reliability test: an unresponsive key URL cannot stall request handling beyond the configured timeout.
 
-F-BLENDER-016 — **P1 / Security + Correctness**: Key material is conflated (`SECRET_KEY` used as Django secret *and* treated as an RSA private key for JOSE/JWKS)
+F-BLENDER-016 — **P1 / Security + Correctness (FIXED)**: Key material is conflated (`SECRET_KEY` used as Django secret *and* treated as an RSA private key for JOSE/JWKS)
 - Where:
-  - `atc-blender/flight_feed_operations/views.py:66`–`83` (`public_key_view` tries to parse `SECRET_KEY` as PEM and publishes JWK)
-  - `atc-blender/flight_feed_operations/pki_helper.py:266`–`290` (`sign_json_via_jose` loads `SECRET_KEY` as PEM)
-  - `atc-blender/flight_blender/settings.py:46`–`59` uses `SECRET_KEY` as the Django secret (expected to be a random string)
+  - `atc-blender/flight_blender/settings.py`:
+    - `DJANGO_SECRET_KEY` (preferred) or legacy `SECRET_KEY` for Django.
+    - `OIDC_SIGNING_PRIVATE_KEY_PEM` for JOSE signing + JWKS publishing.
+  - `atc-blender/flight_feed_operations/views.py` (`/signing_public_key` returns `settings.OIDC_SIGNING_PUBLIC_JWKS`)
+  - `atc-blender/flight_feed_operations/pki_helper.py` (`sign_json_via_jose` loads `OIDC_SIGNING_PRIVATE_KEY_PEM`)
 - Why it matters: this is brittle and dangerous configuration:
   - If `SECRET_KEY` is a normal Django secret, the JOSE/JWKS logic silently fails.
   - If `SECRET_KEY` is set to an RSA private key PEM, you’ve coupled unrelated security domains (Django signing + JOSE signing) and increased blast radius of key compromise.
@@ -927,8 +929,8 @@ F-BLENDER-016 — **P1 / Security + Correctness**: Key material is conflated (`S
   - Update `public_key_view` and `sign_json_via_jose` to use the dedicated signing key(s), not Django’s secret.
   - Add explicit startup checks: if JOSE signing is enabled, fail fast unless the signing key parses as PEM and the public key endpoint returns valid JWKS.
 - Verify:
-  - Startup check fails when JOSE signing is enabled but no PEM key is configured.
-  - Unit test validates that `/signing_public_key` returns a valid JWKS document.
+  - Startup check fails when `OIDC_SIGNING_PRIVATE_KEY_PEM` is set but invalid (startup refuses to boot).
+  - Unit test validates that `/signing_public_key` returns a valid JWKS document when `OIDC_SIGNING_PRIVATE_KEY_PEM` is configured.
 
 F-BLENDER-017 — **P2 / Ops + Reliability**: Default container entrypoints run Uvicorn with `--reload` (dev-only) and mixed with `--workers`
 - Where:
@@ -1273,9 +1275,10 @@ Legend:
    - `atc-blender/tests/test_jwks_cache.py` covers TTL caching + backoff behavior.
    - Note: issuer allowlist validation remains **TODO** (see **F-BLENDER-002**).
 
-5) Separate Django secret from JWT signing key — **TODO**
-   - `atc-blender/flight_blender/settings.py`
-   - `atc-blender/flight_feed_operations/views.py`
+5) Separate Django secret from JWT signing key — **DONE**
+   - `atc-blender/flight_blender/settings.py` now uses `DJANGO_SECRET_KEY` for Django and `OIDC_SIGNING_PRIVATE_KEY_PEM` for JOSE/JWKS.
+   - `atc-blender/flight_feed_operations/views.py` `/signing_public_key` now serves `OIDC_SIGNING_PUBLIC_JWKS` derived from the signing key, not Django secret.
+   - `atc-blender/flight_feed_operations/pki_helper.py` `sign_json_via_jose` uses `OIDC_SIGNING_PRIVATE_KEY_PEM`.
 
 6) DB-failure backoff for write-heavy loops — **TODO**
    - `atc-drone/crates/atc-server/src/loops/telemetry_persist_loop.rs`

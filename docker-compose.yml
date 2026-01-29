@@ -338,7 +338,8 @@ services:
       retries: 6
       start_period: 40s
     environment:
-      - SECRET_KEY=${BLENDER_SECRET_KEY:-change-me-flight-blender-secret-key}
+      - DJANGO_SECRET_KEY=${BLENDER_SECRET_KEY:-change-me-flight-blender-secret-key}
+      - OIDC_SIGNING_PRIVATE_KEY_PEM=${BLENDER_OIDC_SIGNING_PRIVATE_KEY_PEM:-}
       - IS_DEBUG=${BLENDER_IS_DEBUG:-0}
       - BYPASS_AUTH_TOKEN_VERIFICATION=${BLENDER_BYPASS_AUTH_TOKEN_VERIFICATION:-0}
       - DISABLE_JSON_LOGGING=${BLENDER_DISABLE_JSON_LOGGING:-0}
@@ -394,7 +395,8 @@ services:
       retries: 6
       start_period: 60s
     environment:
-      - SECRET_KEY=${BLENDER_SECRET_KEY:-change-me-flight-blender-secret-key}
+      - DJANGO_SECRET_KEY=${BLENDER_SECRET_KEY:-change-me-flight-blender-secret-key}
+      - OIDC_SIGNING_PRIVATE_KEY_PEM=${BLENDER_OIDC_SIGNING_PRIVATE_KEY_PEM:-}
       - IS_DEBUG=${BLENDER_IS_DEBUG:-0}
       - BYPASS_AUTH_TOKEN_VERIFICATION=${BLENDER_BYPASS_AUTH_TOKEN_VERIFICATION:-0}
       - USSP_NETWORK_ENABLED=${BLENDER_USSP_NETWORK_ENABLED:-1}
