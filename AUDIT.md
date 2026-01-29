@@ -176,9 +176,11 @@ This audit uses three layers:
 - Geometry correctness fixes (no sampling shortcuts in safety checks):
   - `atc-drone/crates/atc-core/src/models.rs` `Geofence::intersects_segment` now uses exact segment–polygon intersection (local ENU) plus altitude band overlap (no sampling).
   - `atc-drone/crates/atc-core/src/spatial.rs` `segment_to_segment_distance` now detects true crossings (distance=0 on intersection).
+- Conflict prediction now uses continuous-time CPA (no 1s miss-between-samples risk):
+  - `atc-drone/crates/atc-core/src/conflict.rs` `predict_conflict` now computes the conflict window analytically and minimizes distance within that window (constant-velocity model).
+  - Added regression unit test `detects_near_miss_between_whole_seconds`.
 
 **Open risks / work**
-- Conflict prediction uses 1‑second discrete sampling; can miss true closest‑approach between samples at higher relative speeds.
 - Telemetry timestamps are normalized to server time before validation; stale/future telemetry can appear “fresh.”
 - `ConflictSeverity::Info` exists but is not emitted by the predictor (Warning/Critical only).
 - `ATC_ALTITUDE_REFERENCE=AGL` is explicitly unsupported and falls back to AMSL; safety rules compare altitude directly (Part 107 is AGL).
@@ -200,11 +202,17 @@ This audit uses three layers:
 
 **Detailed findings (write-as-we-go; do not delete)**
 
-F-DRONE-001 — **P0 / Safety**: Conflict prediction can miss the true CPA (1s discrete sampling)
+F-DRONE-001 — **P0 / Safety (FIXED)**: Conflict prediction could miss the true CPA (1s discrete sampling)
 - Where: `atc-drone/crates/atc-core/src/conflict.rs` (`ConflictDetector::predict_conflict`)
 - Why it matters: two aircraft can pass closest approach between samples; the system can fail to emit a Warning/Critical that should exist.
-- Fix: replace the loop `for t in 0..=lookahead` with analytic CPA (relative position/velocity) or adaptive sampling (step size shrinks with closing speed). Keep a conservative bound (sample around t* or compute distance bounds) so you never miss a violation.
-- Verify: add unit tests that construct a near-miss between integer seconds (expected: conflict detected); add property tests vs a reference CPA implementation for randomized cases.
+- Fix (implemented):
+  - `predict_conflict` now uses a continuous-time constant-velocity model:
+    - computes the time window where both horizontal and vertical thresholds are simultaneously satisfied (solving the horizontal quadratic + vertical linear interval), and
+    - finds the closest approach within that window analytically (minimizing 3D distance in the interval).
+  - Added unit test `detects_near_miss_between_whole_seconds` to prevent regressions where conflicts only occur between integer seconds.
+- Verify:
+  - `cargo test -p atc-core` includes the regression test and must pass.
+  - Recommended follow-up: add randomized/property tests and integration coverage in `atc-drone/crates/atc-server/tests/conflict_test.rs`.
 
 F-DRONE-002 — **P0 / Safety (FIXED)**: Geofence intersection could be missed (sampling-based)
 - Where: `atc-drone/crates/atc-core/src/models.rs` (`Geofence::intersects_segment`), `atc-drone/crates/atc-core/src/route_engine.rs` (`geofence_blocks_segment`)
@@ -1188,7 +1196,9 @@ F-DSS-011 — **P1 / Reliability**: JWKS refresh failure panics and can take dow
   - `Geofence::intersects_segment` is now exact (no sampling) and has unit tests in `atc-drone/crates/atc-core/src/models.rs`.
   - `segment_to_segment_distance` now detects crossings and has a unit test in `atc-drone/crates/atc-core/src/spatial.rs`.
   Recommended: add property‑based tests (and optionally cross-check against a reference geometry crate like `geo`) in a dedicated `atc-drone/crates/atc-core/tests/geometry.rs`.
-- **Conflict CPA correctness not validated:** `atc-drone/crates/atc-core/src/conflict.rs` currently samples 1‑second steps. When replacing with analytic CPA or adaptive sampling, add regression tests in `conflict.rs` plus integration coverage in `atc-drone/crates/atc-server/tests/conflict_test.rs` for “near‑miss between samples” scenarios.
+- **Conflict CPA verification remains incomplete (even though the 1s sampling is removed):**  
+  - `atc-drone/crates/atc-core/src/conflict.rs` now uses a continuous-time CPA model and includes a regression test (`detects_near_miss_between_whole_seconds`).
+  - Recommended: add integration coverage in `atc-drone/crates/atc-server/tests/conflict_test.rs` plus property-based fuzzing of relative-motion cases (including near-zero relative velocities, high-speed passes, and vertical-only convergences).
 - **Telemetry time semantics not verified:** `normalize_telemetry_timestamp` in `atc-drone/crates/atc-server/src/api/routes.rs` mutates out‑of‑bounds timestamps. Add API‑level tests in `atc-drone/crates/atc-server/tests/telemetry_test.rs` (or `src/api/tests.rs`) to assert rejection/flagging behavior once normalization is removed.
 - **Altitude reference (AGL/AMSL) lacks end‑to‑end tests:** conversion happens in `atc-drone/crates/atc-server/src/altitude.rs`, `state/store.rs`, and `route_planner.rs`. Add unit tests for conversion and integration tests that inject terrain to validate AGL ceilings (route planner + compliance).
 - **Scenario regression harness is not tied to safety outcomes:** leverage `atc-drone/crates/atc-cli` scenarios plus `tools/e2e_demo.sh` to define deterministic safety scenarios (conflict prediction, geofence intersections, AGL violations) and gate them in CI.
@@ -1314,8 +1324,9 @@ Legend:
    - `segment_to_segment_distance` now detects true crossings (distance=0 on intersection).
    - Unit tests added in `atc-drone/crates/atc-core/src/models.rs` and `atc-drone/crates/atc-core/src/spatial.rs`.
 
-10) Conflict prediction must be continuous (CPA) — **TODO**
-   - Replace 1‑second sampling with analytic CPA or adaptive sampling
+10) Conflict prediction must be continuous (CPA) — **DONE**
+   - `atc-drone/crates/atc-core/src/conflict.rs` now uses an analytic constant-velocity CPA model (no 1-second sampling).
+   - Regression test added: `detects_near_miss_between_whole_seconds`.
 
 11) Altitude reference correctness (AGL support) — **TODO**
    - AGL/AMSL ambiguity must be resolved end‑to‑end before real ops
