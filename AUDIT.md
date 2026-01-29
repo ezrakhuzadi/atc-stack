@@ -182,9 +182,10 @@ This audit uses three layers:
 - Altitude semantics: AGL limits enforced when terrain is required:
   - `atc-drone/crates/atc-server/src/api/altitude_validation.rs` enforces SafetyRules min/max altitude against AGL (`altitude_amsl - terrain_elevation`) when `ATC_TERRAIN_REQUIRE=1` (fails closed if terrain fetch fails).
   - `atc-drone/crates/atc-server/src/route_planner.rs` uses `state.rules().max_altitude_m` for the route-engine `faa_limit_agl` (removes the hardcoded `500.0`).
+- Telemetry time semantics (no “normalize to now”):
+  - `atc-drone/crates/atc-server/src/api/routes.rs` now validates the client-provided timestamp as-is (rejects too-old/too-far-future) and uses server receipt time for `last_update`.
 
 **Open risks / work**
-- Telemetry timestamps are normalized to server time before validation; stale/future telemetry can appear “fresh.”
 - `ConflictSeverity::Info` exists but is not emitted by the predictor (Warning/Critical only).
 - `/v1/geofences/check-route` is public and not rate‑limited; accepts arbitrary waypoint counts.
 - Public read endpoints expose operational data (`/v1/traffic`, `/v1/conflicts`, `/v1/daa`, `/v1/drones`).
@@ -261,11 +262,17 @@ F-DRONE-004 — **P0 / Safety + Product correctness (FIXED)**: Altitude referenc
   - With `ATC_ENV=production` (or `ATC_TERRAIN_REQUIRE=1`), submit a route with a waypoint at `altitude_amsl = terrain + max_agl + 10` and confirm a blocking `altitude_agl` violation appears.
   - Recommended follow-up: end-to-end tests with a mocked terrain provider over non-zero terrain elevations.
 
-F-DRONE-005 — **P0 / Safety**: Telemetry timestamps are normalized to “now” before validation (can mask stale/bad telemetry)
-- Where: `atc-drone/crates/atc-server/src/api/routes.rs` (`normalize_telemetry_timestamp`, called in `receive_telemetry`)
+F-DRONE-005 — **P0 / Safety (FIXED)**: Telemetry timestamps were normalized to “now” before validation (could mask stale/bad telemetry)
+- Where: `atc-drone/crates/atc-server/src/api/routes.rs` (`receive_telemetry` timestamp validation + receipt-time stamping)
 - Why it matters: stale/future telemetry can appear “fresh”, defeating timeout/lost logic and weakening conflict prediction time semantics.
-- Fix: stop mutating the telemetry timestamp. Either reject out-of-bounds timestamps, or accept but store `source_timestamp` and `received_at` separately and mark `timestamp_valid=false`.
-- Verify: API tests asserting stale telemetry is rejected or flagged (and does not update `last_update` as if it were current).
+- Fix (implemented):
+  - Removed `normalize_telemetry_timestamp`.
+  - `receive_telemetry` now:
+    - validates the client-provided timestamp against `telemetry_max_future_s` / `telemetry_max_age_s`, and
+    - overwrites the stored timestamp with server receipt time **after** validation so `last_update` reflects server time (does not trust client clocks).
+- Verify:
+  - Unit tests: `cargo test -p atc-server` must pass.
+  - Manual: send telemetry with a timestamp older than `ATC_TELEMETRY_MAX_AGE_S` and confirm it returns 400 and does not update drone `last_update`.
 
 F-DRONE-006 — **P0 / Security + Privacy**: Operational “read” endpoints are public
 - Where: `atc-drone/crates/atc-server/src/api/routes.rs` public router includes `/v1/drones`, `/v1/traffic`, `/v1/conflicts`, `/v1/daa`, etc.
@@ -1343,8 +1350,9 @@ Legend:
    - `atc-drone/crates/atc-server/src/route_planner.rs` now sets `RouteEngineConfig::faa_limit_agl = state.rules().max_altitude_m` (removes hardcoded `500.0`).
    - Note: `ATC_ALTITUDE_REFERENCE` remains WGS84/AMSL input conversion; AGL is enforced via terrain-derived limits.
 
-12) Telemetry timestamp handling — **TODO**
-   - Stop normalizing out‑of‑range timestamps to “now”; treat as invalid or degraded
+12) Telemetry timestamp handling — **DONE**
+   - `atc-drone/crates/atc-server/src/api/routes.rs` now validates client timestamps and no longer “normalizes to now” before validation.
+   - Stored `last_update` uses server receipt time after validation, so timeouts do not trust client clocks.
 
 13) Lock down operational data exposure — **TODO**
    - Require auth / network-isolate: `/v1/drones`, `/v1/traffic`, `/v1/conflicts`, `/v1/daa`, `/v1/flights`, `/v1/ws`
