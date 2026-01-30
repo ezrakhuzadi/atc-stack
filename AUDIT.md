@@ -382,11 +382,15 @@ F-DRONE-019 — **P1 / Safety**: Conformance “exit geofence” reroute is not 
 - Fix: generate the exit as a *goal*, then use the route planner to compute a validated short path to the exit (or HOLD if planning fails).
 - Verify: add a test scenario with a concave geofence + nearby secondary geofence; conformance recovery must not command an unsafe path.
 
-F-DRONE-020 — **P0 / Safety + Compliance**: Route planner uses inconsistent AGL ceiling (hardcoded 500m)
-- Where: `atc-drone/crates/atc-server/src/route_planner.rs` (`plan_airborne_route` sets `RouteEngineConfig { faa_limit_agl: 500.0, ... }`)
+F-DRONE-020 — **P0 / Safety + Compliance (FIXED)**: Route planner uses a single authoritative AGL ceiling (no hardcoded 500m)
+- Where: `atc-drone/crates/atc-server/src/route_planner.rs` (`RouteEngineConfig.faa_limit_agl` is derived from `state.rules().max_altitude_m`)
 - Why it matters: `RouteEngineConfig` default is `121.0` (Part 107 ~400ft) but conflict/airborne planning can exceed that, creating illegal/unsafe guidance.
-- Fix: derive `faa_limit_agl` from a single authoritative config/rule (e.g., `SafetyRules.max_altitude_m` once AGL is correctly implemented). If you intentionally allow emergency ceilings, it must be explicit (`emergency_ceiling_agl_m`) and auditable.
-- Verify: tests that planned routes never exceed configured ceilings; integration tests covering conflict reroutes.
+- Fix (implemented):
+  - `plan_airborne_route` sets `faa_limit_agl: state.rules().max_altitude_m.max(0.0)` (removes the hardcoded `500.0`).
+  - Ceiling is now controlled by `ATC_RULES_MAX_ALTITUDE_M` (AGL semantics when `ATC_TERRAIN_REQUIRE=1`).
+- Verify:
+  - `cargo test -p atc-core` includes AGL ceiling tests in the route engine.
+  - Recommended: add an integration test that plans a route with a waypoint above the ceiling and asserts it is rejected/adjusted under production terrain semantics.
 
 F-DRONE-021 — **P0 / Security (FIXED)**: `owner_id` is effectively unauthenticated and can be spoofed via telemetry
 - Where: `atc-drone/crates/atc-server/src/state/store.rs` (`update_telemetry` writes `drone_owners` from `telemetry.owner_id` and `DroneState::update` accepts it)
@@ -1232,7 +1236,7 @@ F-DSS-011 — **P1 / Reliability**: JWKS refresh failure panics and can take dow
 - **Conflict CPA verification remains incomplete (even though the 1s sampling is removed):**  
   - `atc-drone/crates/atc-core/src/conflict.rs` now uses a continuous-time CPA model and includes a regression test (`detects_near_miss_between_whole_seconds`).
   - Recommended: add integration coverage in `atc-drone/crates/atc-server/tests/conflict_test.rs` plus property-based fuzzing of relative-motion cases (including near-zero relative velocities, high-speed passes, and vertical-only convergences).
-- **Telemetry time semantics not verified:** `normalize_telemetry_timestamp` in `atc-drone/crates/atc-server/src/api/routes.rs` mutates out‑of‑bounds timestamps. Add API‑level tests in `atc-drone/crates/atc-server/tests/telemetry_test.rs` (or `src/api/tests.rs`) to assert rejection/flagging behavior once normalization is removed.
+- **Telemetry time semantics need explicit verification:** `receive_telemetry` in `atc-drone/crates/atc-server/src/api/routes.rs` validates client timestamps against `ATC_TELEMETRY_MAX_FUTURE_S` / `ATC_TELEMETRY_MAX_AGE_S`, then stamps server receipt time to avoid trusting client clocks. Add API-level tests (e.g., `atc-drone/crates/atc-server/tests/telemetry_test.rs` or `src/api/tests.rs`) for too-old/too-far-future timestamps and confirm `last_update` behaves as intended.
 - **Altitude reference (AGL/AMSL) lacks end‑to‑end tests:** conversion happens in `atc-drone/crates/atc-server/src/altitude.rs`, `state/store.rs`, and `route_planner.rs`. Add unit tests for conversion and integration tests that inject terrain to validate AGL ceilings (route planner + compliance).
 - **Scenario regression harness is not tied to safety outcomes:** leverage `atc-drone/crates/atc-cli` scenarios plus `tools/e2e_demo.sh` to define deterministic safety scenarios (conflict prediction, geofence intersections, AGL violations) and gate them in CI.
 - **CI safety gates are absent:** add CI workflows (per repo) to run the above tests, `cargo test --all`, and the ignored integration tests (`atc-drone/crates/atc-server/tests/*`). Save artifacts (logs + JSON outputs) as evidence for safety review.
