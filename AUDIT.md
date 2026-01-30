@@ -1026,22 +1026,20 @@ F-BLENDER-012 — **P1 / Correctness (FIXED)**: Speed calculation can divide by 
   - Unit test with two observations sharing the same timestamp does not crash and yields finite outputs.
   - Unit test: `atc-blender/tests/test_surveillance_tracks.py` (`test_duplicate_timestamps_do_not_crash`)
 
-F-BLENDER-013 — **P1 / Correctness + Reliability**: GeoFence RTree index clearing is inconsistent (stale entries / wrong intersections)
+F-BLENDER-013 — **P1 / Correctness + Reliability (FIXED)**: GeoFence RTree index clearing is inconsistent (stale entries / wrong intersections)
 - Where:
   - `atc-blender/geo_fence_operations/rtree_geo_fence_helper.py:55`–`93`
     - `generate_geo_fence_index` swaps bounds to `[lat_min, lon_min, lat_max, lon_max]` before inserting (line ~71)
     - `clear_rtree_index` deletes using the **unswapped** `fence.bounds` order (line ~91–93), so deletions don’t match inserted rectangles
   - Index storage path is shared on disk: `atc-blender/common/data_definitions.py:94` (`/tmp/blender_geofence_idx`)
 - Why it matters: the index persists on disk across requests. If “clear” doesn’t actually delete, intersections can include stale geofences (including out-of-window or deleted fences), producing incorrect geofence query results and confusing downstream safety decisions.
-- Fix:
-  - Easiest: use an **in-memory** `rtree.index.Index()` for per-request indexes (no on-disk basepath) since you rebuild it anyway.
-  - If you must persist: make insert/delete coordinate order consistent, call `.close()`, and use a per-process/per-request unique basepath (or a lock) to avoid cross-worker contamination.
-  - Avoid `id % 10**8` collisions; use a monotonic counter or store the full UUID-to-int mapping.
+- Status:
+  - **DONE**: switched GeoFence RTree indexes to in-memory per-request computation and made `clear_rtree_index` reset the in-memory index.
+  - **DONE**: removed hash-based IDs in the index (uses per-build sequential integers).
 - Verify:
-  - Regression test: call `generate_geo_fence_index` then `clear_rtree_index`, then confirm `idx.intersection(...)` returns no objects for an empty view.
-  - Concurrency test: two parallel requests do not cross-contaminate index contents.
+  - Unit test: `atc-blender/tests/test_rtree_in_memory.py`.
 
-F-BLENDER-014 — **P1 / Correctness + Scalability**: File-backed RTree indexes at fixed `/tmp/*` paths are unsafe under multi-worker concurrency (and ID collisions are possible)
+F-BLENDER-014 — **P1 / Correctness + Scalability (FIXED)**: File-backed RTree indexes at fixed `/tmp/*` paths are unsafe under multi-worker concurrency (and ID collisions are possible)
 - Where:
   - Index basepaths are fixed and shared: `atc-blender/common/data_definitions.py:92`–`96`
   - File-backed RTree usage:
@@ -1050,12 +1048,11 @@ F-BLENDER-014 — **P1 / Correctness + Scalability**: File-backed RTree indexes 
     - `atc-blender/geo_fence_operations/rtree_geo_fence_helper.py:15`–`17`
   - IDs are derived from `sha256(... ) % 10**8` in multiple places, allowing collisions at scale.
 - Why it matters: in production you typically run multiple worker processes/containers. Shared on-disk indexes without per-process isolation + locking can corrupt or cross-contaminate results, leading to missed intersections (unsafe approvals) or false positives (unnecessary blocks).
-- Fix:
-  - Prefer in-memory `index.Index()` for per-request computations.
-  - If persistence is required, use per-process unique paths and file locks, and close indexes (`idx.close()`) deterministically.
-  - Replace `% 10**8` IDs with collision-resistant identifiers (monotonic ints, UUID-to-int mapping table, or include full UUID in the index object and use a stable incrementing integer).
+- Status:
+  - **DONE**: switched RTree helpers (GeoFence/FlightDeclaration/OperationalIntents) to in-memory `index.Index()` rather than fixed `/tmp/*` basepaths.
+  - **DONE**: replaced `% 10**8` IDs with per-build sequential integers to avoid collisions within an index build.
 - Verify:
-  - Parallel test harness running two index builds in different threads/processes yields correct, isolated intersections.
+  - Unit test: `atc-blender/tests/test_rtree_in_memory.py`.
 
 F-BLENDER-015 — **P1 / Security (FIXED)**: Signed-telemetry public key URLs are fetched without SSRF protections or timeouts
 - Where:
