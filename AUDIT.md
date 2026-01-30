@@ -558,13 +558,17 @@ F-DRONE-030 — **P1 / Security + Reliability (FIXED)**: Flight plan and complia
 - Verify:
   - `cargo test -p atc-server` (includes `flight_plan_rejects_too_many_route_points` and `compliance_evaluate_rejects_too_many_route_points`).
 
-F-DRONE-031 — **P1 / Safety**: Strategic deconfliction with trajectories can still miss conflicts (time discretization)
-- Where: `atc-drone/crates/atc-core/src/spatial.rs` (`check_timed_conflict` samples time with a step clamped to 0.5–2.0s)
+F-DRONE-031 — **P1 / Safety (FIXED)**: Strategic deconfliction with trajectories can still miss conflicts (time discretization)
+- Where: `atc-drone/crates/atc-core/src/spatial.rs` (`check_timed_conflict` now performs continuous-time segment overlap checks instead of time sampling)
 - Why it matters: the strategic scheduler can approve plans whose trajectories violate separation between samples (especially at higher relative speeds). This defeats the purpose of strategic scheduling as a pre-flight safety gate.
-- Fix: move to continuous-time checks:
-  - Use analytic closest-approach on relative motion in a local ENU frame, or
-  - bound-based segment/segment checks with adaptive time steps around predicted CPA.
-- Verify: regression tests for “near miss between samples”, plus property tests comparing against a reference implementation.
+- Fix (implemented):
+  - Replaced time-discretized sampling with a continuous-time closest-approach check on relative motion in a local ENU frame:
+    - compute the time interval where vertical separation can be satisfied,
+    - analytically minimize horizontal separation over that interval,
+    - report conflict if both constraints can be satisfied at the same time.
+  - Added a regression unit test that reproduces a conflict occurring between 2s samples.
+- Verify:
+  - `cargo test -p atc-core` (includes `timed_conflict_detects_conflict_between_samples`).
 
 F-DRONE-032 — **P2 / Launch readiness**: Integration tests exist but are not run in CI (and safety gates aren’t enforced)
 - Where:
