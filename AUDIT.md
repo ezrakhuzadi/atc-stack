@@ -993,16 +993,19 @@ F-BLENDER-009 — **P1 / Security + Launch readiness**: Django “secure by defa
 - Verify:
   - `manage.py check --deploy` passes in production config; browser devtools shows cookies as `Secure` and `HttpOnly`.
 
-F-BLENDER-010 — **P1 / Reliability**: Query parsing can throw 500s on malformed input (missing 4xx validation)
+F-BLENDER-010 — **P1 / Reliability (FIXED)**: Query parsing can throw 500s on malformed input (missing 4xx validation)
 - Where:
   - `atc-blender/geo_fence_operations/views.py:220`–`230` (`view_port = [float(i) for i in view.split(\",\")]` without validation)
   - Similar patterns exist in other “view” bbox endpoints (RID/SCD helpers call parsing utilities; ensure they all fail 400, not 500)
 - Why it matters: a single malformed request can crash a request handler (500) and may be used for noisy DoS; it also makes the system brittle when clients send bad data.
-- Fix:
-  - Validate `view` has exactly 4 comma-separated numbers and that they are within lat/lon bounds; return 400 with a clear error.
-  - Add max length checks (reject pathological query strings early).
+- Status:
+  - **DONE**: added bounded parsers `parse_view_lat_lng` / `parse_view_minx_miny` with max-length checks.
+  - **DONE**: updated list/query endpoints to use the shared parsers and raise 400 on invalid `view`.
+- Fix (implemented):
+  - Centralized parsing/validation in `atc-blender/rid_operations/view_port_ops.py`.
+  - `GeoFence` list + `FlightDeclaration` list now return 400 instead of 500 on malformed `view`.
 - Verify:
-  - Tests that send `view=abc` and `view=1,2,3` return 400 (not 500) consistently.
+  - Unit test: `atc-blender/tests/test_view_port_parsing.py`.
 
 F-BLENDER-011 — **P2 / Reproducibility + Ops**: Runtime images use mutable tags and dev-oriented mounts
 - Where:
