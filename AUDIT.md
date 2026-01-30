@@ -1479,25 +1479,24 @@ Legend:
    - `atc-drone/crates/atc-server/src/state/store.rs` `update_telemetry` ignores telemetry-provided `owner_id` and uses the server-owned value.
    - Regression test: `atc-drone/crates/atc-server/src/api/tests.rs` `telemetry_cannot_spoof_owner_id`.
 
-16) Conflict/conformance reroute safety fallback — **TODO**
-   - If planning fails, prefer HOLD; do not issue unvalidated reroutes
-   - `atc-drone/crates/atc-server/src/loops/conflict_loop.rs`
-   - `atc-drone/crates/atc-server/src/loops/conformance_loop.rs`
+16) Conflict/conformance reroute safety fallback — **DONE**
+   - Conflict loop: if planning fails, issue `HOLD` (no unvalidated reroute) — see **F-DRONE-018**
+   - Conformance loop: “exit geofence” behavior now plans a validated exit route or `HOLD` — see **F-DRONE-019**
 
 ### P1 (should fix before “real users” / external pilots)
 
 - Frontend brute-force throttling — **TODO**
 - WebSocket Origin enforcement (CSWSH) — **TODO**
-- Remove WS query-param tokens (use headers/proxy-only) — **TODO**
-- Route engine hard caps defense-in-depth — **TODO**
+- Remove WS query-param tokens (use headers/proxy-only) — **DONE** (see **F-DRONE-008**)
+- Route engine hard caps defense-in-depth — **DONE** (see **F-DRONE-030**)
 - Flight-plan conflict duration correctness (avoid fixed fallback) — **TODO**
 - Gateway: backoff + command expiry — **TODO**
 - Logout should be POST + CSRF-protected — **TODO**
 - Rate-limit or auth‑gate `/v1/geofences/check-route` — **DONE** (moved to P0)
 - Reduce public exposure of operational data endpoints — **DONE** (moved to P0)
 - Add HTTP client timeouts across SDK/Blender/Compliance callers — **TODO**
-- Persist flight plan status transitions (mission loop) — **TODO**
-- Enforce `ATC_COMMAND_ACK_TIMEOUT_SECS > 0` and cap pending commands per drone — **TODO**
+- Persist flight plan status transitions (mission loop) — **DONE** (see **F-DRONE-011**)
+- Enforce `ATC_COMMAND_ACK_TIMEOUT_SECS > 0` and cap pending commands per drone — **DONE** (see **F-DRONE-014**)
 
 ### P2 (ops readiness)
 
