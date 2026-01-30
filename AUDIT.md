@@ -356,17 +356,22 @@ F-DRONE-015 — **P1 / Security + DoS (FIXED)**: `/v1/geofences/check-route` was
   - Unit test `create_geofence_and_check_route` (in `atc-drone/crates/atc-server/src/api/tests.rs`) now uses admin auth.
   - Recommended follow-up: add a negative test for `waypoints.len() > route_planner_max_waypoints` returning 400.
 
-F-DRONE-016 — **P1 / Reliability**: OAuth token fetch has no HTTP timeout (can hang critical loops)
+F-DRONE-016 — **P1 / Reliability (FIXED)**: OAuth token fetch has no HTTP timeout (can hang critical loops)
 - Where: `atc-drone/crates/atc-server/src/blender_auth.rs` (`BlenderAuthManager::new` uses `reqwest::Client::new()`, `fetch_oauth_token` uses `.send().await` without timeout)
 - Why it matters: a hung token request can stall Blender-dependent loops indefinitely; supervision restarts loops but doesn’t fix a permanently hung network call.
-- Fix: build the reqwest client with `connect_timeout` + request timeout; add retry/backoff on token fetch failures; consider circuit breaker behavior so safety-critical loops degrade cleanly.
+- Fix: `BlenderAuthManager` now builds a reqwest client with `connect_timeout` + request timeout so token fetch cannot hang indefinitely.
 - Verify: simulate a blackholed token URL; process should not hang and readiness should reflect degraded external integration.
 
-F-DRONE-017 — **P1 / Reliability + Security**: SDK client uses no network timeouts and allows plain HTTP
+F-DRONE-017 — **P1 / Reliability + Security (FIXED)**: SDK client uses no network timeouts and allows plain HTTP
 - Where: `atc-drone/crates/atc-sdk/src/client.rs` (`AtcClient::new` uses `reqwest::Client::new()`; `base_url` is unconstrained)
 - Why it matters: client calls can hang forever; allowing `http://` risks token exposure if deployed outside local dev.
-- Fix: add timeouts (connect + overall) and retry policy; require HTTPS unless an explicit `dev_allow_insecure_http` flag is set.
-- Verify: unit tests for URL validation; integration tests for timeout behavior against a blackhole endpoint.
+- Fix:
+  - `AtcClient` now builds reqwest with `connect_timeout` + request timeout.
+  - WebSocket connect is wrapped in a timeout.
+  - `AtcClient::new(...)` now rejects `http://` unless the caller explicitly opts in via `AtcClient::new_insecure_http(...)`.
+- Verify:
+  - Unit tests cover URL scheme validation and insecure opt-in.
+  - Manual: connect to a blackholed endpoint should time out (HTTP + WS) rather than hang indefinitely.
 
 F-DRONE-018 — **P0 / Safety (FIXED)**: Conflict loop can issue a reroute that was *not* validated against obstacles/geofences
 - Where: `atc-drone/crates/atc-server/src/loops/conflict_loop.rs` (now: `match plan_airborne_route(...).await { Some => REROUTE, None => HOLD }`)
