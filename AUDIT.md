@@ -973,14 +973,15 @@ F-BLENDER-006 — **P0 / Ops Hazard (FIXED)**: Helper script can delete **all** 
   - Manual review + a unit “shellcheck” gate; ensure the script only touches resources labeled for this compose project.
   - `bash -n atc-blender/start_flight_blender.sh` passes.
 
-F-BLENDER-007 — **P2 / Security + Hygiene**: `dump.rdb` is present in the repo (potential data leak / confusion)
+F-BLENDER-007 — **P2 / Security + Hygiene (FIXED)**: Prevent Redis `dump.rdb`/`*.rdb` artifacts from being committed
 - Where:
-  - `atc-blender/dump.rdb`
+  - `atc-blender/dump.rdb` (Redis/Valkey snapshot artifact)
 - Why it matters: Redis snapshots can include sensitive operational data and should not be committed. Even if benign, it confuses “source of truth” and bloats the repo.
-- Fix:
-  - Remove from repo and add to `.gitignore`; document how to capture/debug data safely (sanitized exports).
+- Fix (implemented):
+  - `.gitignore` already excludes `dump.rdb` and `*.rdb`.
+  - Added a CI guard (`repo_hygiene`) that fails if any `*.rdb` files are tracked by git.
 - Verify:
-  - CI check forbids committing `.rdb` dumps.
+  - CI: `git ls-files '*.rdb'` must be empty.
 
 F-BLENDER-008 — **P1 / Security (FIXED)**: GeoZone import-by-URL can be used as an SSRF primitive (token-holder can fetch arbitrary URLs)
 - Where:
