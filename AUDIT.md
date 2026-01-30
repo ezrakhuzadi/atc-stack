@@ -592,17 +592,19 @@ F-FRONTEND-003 — **P1 / Security (FIXED)**: Logout is a GET (CSRF-able) + logi
   - Manual: GET `/logout` returns 405; POST `/logout` requires CSRF.
   - Manual: session ID changes across login (new session created on login).
 
-F-FRONTEND-004 — **P1 / Security**: No brute-force protection on login / signup
+F-FRONTEND-004 — **P1 / Security (FIXED)**: No brute-force protection on login / signup
 - Where:
-  - `atc-frontend/server.js:581`–`598` (`POST /login`)
-  - `atc-frontend/server.js:632`–`692` (`POST /signup`)
+  - `atc-frontend/server.js` (`POST /login` and `POST /signup`)
+  - `atc-frontend/server.js` (in-memory auth throttling helpers)
 - Why it matters: password guessing is practical on an internet-exposed console; bcrypt is also CPU-expensive and can become a DoS vector without throttling.
 - Fix:
-  - Add rate limiting for `/login` and `/signup` (per-IP and per-username/email) and add progressive delays / lockouts.
+  - Add in-memory throttling:
+    - login lockouts on repeated failures (per-IP and per-existing-username), returning 429 + `Retry-After`.
+    - signup request rate limiting per-IP, returning 429 + `Retry-After` before bcrypt hashing work.
   - Consider requiring admin creation of accounts for production (disable self-signup).
 - Verify:
-  - Integration test that repeated bad logins get 429.
-  - Load test ensuring login route stays responsive under attack.
+  - Manual: repeated bad logins eventually return 429 (with `Retry-After`); successful login clears the lockout for that IP/user.
+  - Manual: repeated signup submissions eventually return 429 (with `Retry-After`).
 
 F-FRONTEND-005 — **P1 / Security + Launch readiness (FIXED)**: Default users + guest login are one env-var away from shipping to prod
 - Where:
