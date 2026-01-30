@@ -10,7 +10,7 @@ This stack can run fully offline for **terrain** and **building/obstacle** looku
 From the repo root (`atc-stack/`):
 
 ```bash
-python tools/fetch_nationwide_data.py all --extent us50 --jobs 12
+python3 tools/fetch_offline_data.py all --extent us50 --jobs 12
 ```
 
 Notes:

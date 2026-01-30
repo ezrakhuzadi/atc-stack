@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fetch offline nationwide data for ATC Drone:
+Fetch offline data for the ATC stack:
 
 - OSM PBF (Geofabrik) for local Overpass
 - Copernicus DEM (AWS S3) GeoTIFF tiles for terrain-api
@@ -274,7 +274,7 @@ def fetch_terrain(
 
 
 def main(argv: Sequence[str]) -> int:
-    parser = argparse.ArgumentParser(description="Fetch nationwide OSM + terrain data for ATC Drone")
+    parser = argparse.ArgumentParser(description="Fetch offline OSM + terrain data for the ATC stack")
     parser.add_argument(
         "--data-root",
         default=os.getenv("ATC_DATA_ROOT", "/mnt/atc-data"),
