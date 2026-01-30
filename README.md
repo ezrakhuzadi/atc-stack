@@ -29,6 +29,8 @@ cp .env.example .env
 
 Edit `.env` and replace all `change-me-*` values.
 
+If you run Flight Blender with `BLENDER_IS_DEBUG=0`, make sure `BLENDER_ALLOWED_HOSTS` includes the hostnames you’ll use to access it (for local compose: `localhost,127.0.0.1,flight-blender,atc-frontend`). For production, set this to your external FQDN(s).
+
 3) (Optional) Provide data mounts
 
 This stack expects host data directories at:

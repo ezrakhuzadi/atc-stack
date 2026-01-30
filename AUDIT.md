@@ -1115,18 +1115,18 @@ F-BLENDER-018 — **P0 / Security (FIXED)**: Django secret placeholder detection
 - Verify:
   - With `IS_DEBUG=0`, setting `DJANGO_SECRET_KEY=change-me-flight-blender-secret-key` causes a hard startup failure.
 
-F-BLENDER-019 — **P1 / Ops + Reliability**: `ALLOWED_HOSTS` defaults are not aligned with this stack’s deployment topology (easy BadHost failures)
+F-BLENDER-019 — **P1 / Ops + Reliability (FIXED)**: `ALLOWED_HOSTS` defaults are not aligned with this stack’s deployment topology (easy BadHost failures)
 - Where:
   - `atc-stack/atc-blender/flight_blender/settings.py:60`–`63` uses `ALLOWED_HOSTS=["*"]` only when `IS_DEBUG=1`, otherwise defaults to `"openutm.net"`
   - `atc-stack/docker-compose.yml:349`–`375` exposes Flight Blender on `localhost:8000` (Host header `localhost`) and does not pass `ALLOWED_HOSTS`
 - Why it matters:
   - If someone tries to run “non-debug” (`IS_DEBUG=0`) for a production-like test in this stack, Django may reject requests with `DisallowedHost`, causing confusing failures.
   - For real deployments you want `ALLOWED_HOSTS` explicit and environment-specific, not a hardcoded default domain.
-- Fix:
-  - In `atc-stack`, pass `ALLOWED_HOSTS` explicitly (e.g., `localhost,flight-blender,atc-frontend`) for local stack profiles.
-  - In production deployment docs, require setting `ALLOWED_HOSTS` to the external FQDN(s) for the service.
+- Status:
+  - **DONE**: `docker-compose.yml` now passes `ALLOWED_HOSTS` explicitly (via `BLENDER_ALLOWED_HOSTS`) for local stack profiles.
+  - **DONE**: docs updated to call out `BLENDER_ALLOWED_HOSTS` for production-like `IS_DEBUG=0` runs.
 - Verify:
-  - With `IS_DEBUG=0` and `ALLOWED_HOSTS` set appropriately, `/ping` and all API endpoints respond without `DisallowedHost`.
+  - With `BLENDER_IS_DEBUG=0` and `BLENDER_ALLOWED_HOSTS` including your hostnames, `/ping` responds without `DisallowedHost`.
 
 **interuss-dss findings (write-as-we-go; do not delete)**
 

@@ -132,7 +132,7 @@ services:
     environment:
       - OVERPASS_MODE=init
       - OVERPASS_META=no
-      # Default: seed Overpass with the Geofabrik US extract (download via tools/fetch_nationwide_data.py).
+      # Default: seed Overpass with the Geofabrik US extract (download via tools/fetch_offline_data.py).
       - OVERPASS_PLANET_URL=file:///osm/${ATC_OSM_PBF:-us-latest.osm.pbf}
       - OVERPASS_DIFF_URL=
       - OVERPASS_COMPRESSION=gz
@@ -397,6 +397,7 @@ services:
       - DJANGO_SECRET_KEY=${BLENDER_SECRET_KEY:-change-me-flight-blender-secret-key}
       - OIDC_SIGNING_PRIVATE_KEY_PEM=${BLENDER_OIDC_SIGNING_PRIVATE_KEY_PEM:-}
       - IS_DEBUG=${BLENDER_IS_DEBUG:-0}
+      - ALLOWED_HOSTS=${BLENDER_ALLOWED_HOSTS:-localhost,127.0.0.1,flight-blender,atc-frontend}
       - BYPASS_AUTH_TOKEN_VERIFICATION=${BLENDER_BYPASS_AUTH_TOKEN_VERIFICATION:-0}
       - DISABLE_JSON_LOGGING=${BLENDER_DISABLE_JSON_LOGGING:-0}
       - ENABLE_CONFORMANCE_MONITORING=${BLENDER_ENABLE_CONFORMANCE_MONITORING:-1}
@@ -450,6 +451,7 @@ services:
       - DJANGO_SECRET_KEY=${BLENDER_SECRET_KEY:-change-me-flight-blender-secret-key}
       - OIDC_SIGNING_PRIVATE_KEY_PEM=${BLENDER_OIDC_SIGNING_PRIVATE_KEY_PEM:-}
       - IS_DEBUG=${BLENDER_IS_DEBUG:-0}
+      - ALLOWED_HOSTS=${BLENDER_ALLOWED_HOSTS:-localhost,127.0.0.1,flight-blender,atc-frontend}
       - BYPASS_AUTH_TOKEN_VERIFICATION=${BLENDER_BYPASS_AUTH_TOKEN_VERIFICATION:-0}
       - USSP_NETWORK_ENABLED=${BLENDER_USSP_NETWORK_ENABLED:-0}
       - DSS_BASE_URL=http://local-dss-core:8082/
