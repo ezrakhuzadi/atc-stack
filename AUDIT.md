@@ -1024,15 +1024,16 @@ F-BLENDER-010 — **P1 / Reliability (FIXED)**: Query parsing can throw 500s on 
 - Verify:
   - Unit test: `atc-blender/tests/test_view_port_parsing.py`.
 
-F-BLENDER-011 — **P2 / Reproducibility + Ops**: Runtime images use mutable tags and dev-oriented mounts
+F-BLENDER-011 — **P2 / Reproducibility + Ops (FIXED)**: Runtime images use mutable tags and dev-oriented mounts
 - Where:
-  - `atc-blender/docker-compose.yml` and `atc-blender/docker-compose-dev.yml` use `valkey/valkey:latest` and mount the project into the container
+  - `atc-blender/docker-compose.yml` / `docker-compose-dev.yml` (Valkey/Postgres image refs; production compose mounts)
 - Why it matters: “latest” tags change over time and can break deployments; bind-mounting source code/venv is great for dev but not a shippable production posture.
-- Fix:
-  - Pin images by version (or digest) for Redis/Valkey and Postgres; provide separate dev vs prod compose profiles.
-  - In production, remove source mounts and build immutable images; store state in named volumes only.
+- Fix (implemented):
+  - Pinned Valkey/Postgres images by digest in `docker-compose.yml` and `docker-compose-dev.yml`.
+  - Production compose (`docker-compose.yml`) no longer bind-mounts the source tree / venv.
+  - `start_flight_blender.sh` supports `--dev` to run `docker-compose-dev.yml`.
 - Verify:
-  - Rebuilding the stack from scratch on a clean machine produces the same container versions and behavior.
+  - CI: `repo_hygiene` job verifies production compose has no source bind-mounts and avoids dev-only flags.
 
 F-BLENDER-012 — **P1 / Correctness (FIXED)**: Speed calculation can divide by zero (duplicate / out-of-order timestamps)
 - Where:
@@ -1106,17 +1107,17 @@ F-BLENDER-016 — **P1 / Security + Correctness (FIXED)**: Key material is confl
   - Startup check fails when `OIDC_SIGNING_PRIVATE_KEY_PEM` is set but invalid (startup refuses to boot).
   - Unit test validates that `/signing_public_key` returns a valid JWKS document when `OIDC_SIGNING_PRIVATE_KEY_PEM` is configured.
 
-F-BLENDER-017 — **P2 / Ops + Reliability**: Default container entrypoints run Uvicorn with `--reload` (dev-only) and mixed with `--workers`
+F-BLENDER-017 — **P2 / Ops + Reliability (FIXED)**: Default container entrypoints run Uvicorn with `--reload` (dev-only) and mixed with `--workers`
 - Where:
   - `atc-blender/entrypoints/no-database/entrypoint.sh` ends with `uvicorn ... --workers 3 --reload`
   - `atc-blender/entrypoints/with-database/entrypoint.sh` also uses `--reload`
-  - `atc-blender/docker-compose.yml` uses `command: ./entrypoints/no-database/entrypoint.sh` (so `--reload` is the default compose path)
+  - `atc-blender/docker-compose.yml` selects the prod entrypoint (no reload) by default
 - Why it matters: auto-reload is meant for dev; it increases CPU usage, can cause unexpected restarts, and is generally not compatible with production process supervision. Combining `--reload` with multiple workers is also an error-prone configuration.
-- Fix:
-  - Use the dedicated prod entrypoint by default (`entrypoint-prod.sh`) in the main compose, or gate `--reload` behind `IS_DEBUG=1`.
-  - Add a CI check that production compose never uses `--reload`.
+- Fix (implemented):
+  - Main compose now uses `./entrypoints/with-database/entrypoint-prod.sh` (no `--reload`).
+  - Added a CI guard to ensure `docker-compose.yml` never uses `--reload` or `*/entrypoint.sh`.
 - Verify:
-  - Production compose starts with stable worker count and no reload watcher; logs confirm expected mode.
+  - CI: `repo_hygiene` job checks `docker-compose.yml` is free of `--reload` and dev-only entrypoints.
 
 F-BLENDER-018 — **P0 / Security (FIXED)**: Django secret placeholder detection was incomplete; `atc-stack` default secret could slip into non-debug deployments
 - Where:
