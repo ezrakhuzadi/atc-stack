@@ -788,18 +788,22 @@ F-FRONTEND-013 — **P2 / Reliability + Ops**: Session storage can grow without 
 - Verify:
   - Load test that hits `/csrf` repeatedly and confirms sessions are reaped/TTL’d and disk usage stays bounded.
 
-F-FRONTEND-014 — **P1 / Security + Product**: Role model is incomplete (e.g., `viewer` can still perform state-changing actions)
+F-FRONTEND-014 — **P1 / Security + Product (FIXED)**: Role model is incomplete (e.g., `viewer` can still perform state-changing actions)
 - Where:
   - `atc-frontend/server.js:817`–`1348` (Blender proxy endpoints use `requireAuth` but not `requireRole`; non-authority roles can still create declarations)
   - `atc-frontend/server.js:1077`–`1200` (ATC proxy gates on “authority vs not”; does not distinguish `viewer` vs `operator`)
   - `atc-frontend/server.js:600`–`621` (guest account role is `viewer`, but UI + proxy do not consistently enforce read-only)
 - Why it matters: the UI appears to intend a “guest/viewer” mode, but current enforcement is mostly “authority vs everyone else.” That makes the viewer account materially more powerful than intended and expands the blast radius of credential compromise.
-- Fix:
+- Fix (implemented):
   - Define RBAC explicitly: at minimum `viewer` (read-only), `operator` (owns drones, can submit plans for own drones), `authority`/`admin` (airspace + global controls).
-  - Enforce server-side in the proxy (`requireRole`) for all state-changing endpoints, not just authority-only endpoints.
-  - Mirror the same RBAC policy in `atc-drone` so the proxy is not the only control point.
+  - `atc-frontend/server.js` now blocks `viewer` from state-changing ATC proxy calls (while still allowing compute-only endpoints like route planning).
+  - `atc-frontend/server.js` now blocks `viewer` from creating/deleting Flight Blender flight declarations.
+  - Added a regression test: `atc-frontend/tools/rbac-smoke.js` (wired into `npm test`).
 - Verify:
-  - Add integration tests that a `viewer` session cannot perform POST/PUT/DELETE operations (expect 403).
+  - `atc-frontend/tools/rbac-smoke.js` asserts a `viewer` session receives 403 on:
+    - `POST /api/atc/v1/drones/register`
+    - `POST /api/blender/flight-declarations`
+    - `DELETE /api/blender/flight-declarations/:id`
 
 F-FRONTEND-015 — **P1 / Product (User-facing bug) (FIXED)**: Removing a stop (or clearing a single Start/End input) can clear *all* waypoints due to an unsafe `clearWaypoints()` call ordering
 - Where:
