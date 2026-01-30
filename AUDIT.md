@@ -312,11 +312,11 @@ F-DRONE-009 — **P1 / Security/Scale**: Drone token lookup is O(N) and tokens a
 - Fix: store token hashes (e.g., Argon2id) and maintain a reverse index `token_hash -> drone_id`; compare in constant time; add rotation + revocation support.
 - Verify: benchmark auth under load; confirm tokens are never logged and DB stores only hashes.
 
-F-DRONE-010 — **P1 / Correctness**: Command IDs are truncated (collision risk)
+F-DRONE-010 — **P1 / Correctness (FIXED)**: Command IDs are truncated (collision risk)
 - Where: `atc-drone/crates/atc-server/src/api/commands.rs` (`CMD-` + first 8 chars of UUID)
 - Why it matters: collisions can cause incorrect ack/routing or DB primary key failures at scale.
-- Fix: use full UUID/ULID and enforce uniqueness (already primary key). Avoid embedding only a partial UUID.
-- Verify: unit test for format + ensure DB insert errors are handled cleanly.
+- Fix: issue-command IDs now use the full UUID (`CMD-<uuid>`) rather than a truncated prefix.
+- Verify: manual (or add a unit test) that issued command IDs are full UUIDs and remain unique.
 
 F-DRONE-011 — **P1 / Reliability**: Flight plan state transitions are not persisted
 - Where: `atc-drone/crates/atc-server/src/loops/mission_loop.rs` mutates `plan.status`/`arrival_time` in memory only
