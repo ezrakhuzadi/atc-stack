@@ -532,15 +532,17 @@ F-DRONE-029 — **P1 / Product correctness + Safety**: Blender flight declaratio
   - Do not default bad timestamps to “now” silently; either reject or mark as degraded.
 - Verify: tests for (a) out-of-range coords rejected, (b) bad timestamp doesn’t become “now”, (c) external declaration does not affect local scheduling unless enabled.
 
-F-DRONE-030 — **P1 / Security + Reliability**: Flight plan and compliance inputs lack hard size caps (CPU/DoS risk)
+F-DRONE-030 — **P1 / Security + Reliability (FIXED)**: Flight plan and compliance inputs lack hard size caps (CPU/DoS risk)
 - Where:
-  - `atc-drone/crates/atc-server/src/api/flights.rs` (`FlightPlanRequest` can include huge `waypoints` / `trajectory_log`)
-  - `atc-drone/crates/atc-server/src/api/routes.rs` (`/v1/compliance/evaluate` accepts arbitrary-size request bodies)
+  - `atc-drone/crates/atc-server/src/api/flights.rs` (flight plan validation now caps route points)
+  - `atc-drone/crates/atc-server/src/api/routes.rs` (`/v1/compliance/evaluate` now caps route points)
 - Why it matters: `validate_flight_plan` loops over every point and also does segment-by-segment geofence checks (sampling-based), which can be made extremely expensive if `trajectory_log` is very large. Even with admin auth, this can turn a single bad request into an outage.
-- Fix:
-  - Add explicit caps: max waypoints, max trajectory points, max payload bytes (ties to F-DRONE-007).
-  - Reject oversize submissions early with clear errors; consider separate “upload trajectory” endpoint if needed.
-- Verify: tests that reject oversize waypoint/log counts; load test showing bounded CPU per request.
+- Fix (implemented):
+  - A global request body limit of 1MiB is enforced (F-DRONE-007).
+  - Flight plan and compliance-evaluate now reject requests whose extracted route exceeds `route_planner_max_waypoints` (covers both `waypoints` and `trajectory_log`).
+  - Added regression tests covering both endpoints.
+- Verify:
+  - `cargo test -p atc-server` (includes `flight_plan_rejects_too_many_route_points` and `compliance_evaluate_rejects_too_many_route_points`).
 
 F-DRONE-031 — **P1 / Safety**: Strategic deconfliction with trajectories can still miss conflicts (time discretization)
 - Where: `atc-drone/crates/atc-core/src/spatial.rs` (`check_timed_conflict` samples time with a step clamped to 0.5–2.0s)
