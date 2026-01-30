@@ -422,17 +422,19 @@ F-DRONE-024 — **P0 / Safety + Reliability (FIXED)**: SQLite command expiry fil
 - Fix: parse the stored timestamp in SQL (`datetime(expires_at) > datetime('now')` / `<`), or migrate `issued_at`/`expires_at` to INTEGER epoch seconds and compare numerically (preferred long-term).
 - Verify: regression test inserts an expired command *on the same day* and asserts it is not returned by `load_all_pending_commands` and is deleted by `delete_expired_commands`.
 
-F-DRONE-025 — **P0 / Security + Privacy**: WebSocket can silently become public in production if `ATC_WS_TOKEN` is unset
+F-DRONE-025 — **P0 / Security + Privacy (FIXED)**: WebSocket can silently become public in production if `ATC_WS_TOKEN` is unset
 - Where:
-  - `atc-drone/crates/atc-server/src/config.rs` (`require_ws_token` defaults to `ws_token.is_some()`)
-  - `atc-drone/crates/atc-server/src/main.rs` (does not enforce `ATC_WS_TOKEN` in prod)
+  - `atc-drone/crates/atc-server/src/config.rs` (`require_ws_token` now defaults to `true` outside development)
   - `atc-drone/crates/atc-server/src/api/ws.rs` (auth check depends on config above)
 - Why it matters: if `ATC_ENV != development` but `ATC_WS_TOKEN` is accidentally omitted, `/v1/ws` becomes effectively unauthenticated and can leak live operational state (positions, conflicts, etc.) to any network client that can reach the server.
-- Fix: fail closed in production:
+- Fix (implemented): fail closed outside development:
   - Default `ATC_REQUIRE_WS_TOKEN=1` when `ATC_ENV != development`
-  - If WS is enabled in prod, require `ATC_WS_TOKEN` to be set (exit at startup if missing/placeholder)
-  - Stop accepting tokens via query params (require `Authorization: Bearer ...` or a secure cookie) to reduce leakage via logs.
-- Verify: startup test for `ATC_ENV=production` with missing `ATC_WS_TOKEN` should fail; with token set, WS handshake without token should be rejected.
+  - `/v1/ws` accepts either `ATC_WS_TOKEN` *or* `ATC_ADMIN_TOKEN` (so the control center proxy can still connect even if no separate WS token is configured)
+  - `ATC_WS_TOKEN=change-me-ws-token` is still rejected in non-dev.
+- Verify:
+  - With `ATC_ENV=production` and no `ATC_WS_TOKEN`, WS handshake without `Authorization` should be rejected (401).
+  - With `ATC_ENV=production`, WS handshake with `Authorization: Bearer $ATC_ADMIN_TOKEN` should succeed.
+  - Follow-up hardening (P1): remove query-param token support entirely to reduce leakage via logs.
 
 F-DRONE-026 — **P1 / Safety + Reliability**: Active HOLD state is in-memory only and not reconstructed after restart
 - Where: `atc-drone/crates/atc-server/src/state/store.rs`
