@@ -408,11 +408,13 @@ F-DRONE-022 — **P1 / Safety**: Geofence validation is incomplete (can accept m
 - Fix: extend validation: enforce finite + range checks for every vertex; enforce minimum unique vertices; reject self-intersections (or normalize); require non-zero area; ensure polygon is closed exactly (not just within epsilon).
 - Verify: unit tests for invalid polygons and a set of known-good polygons.
 
-F-DRONE-023 — **P0 / Safety**: Airborne conflict reroute planning can silently drop terrain constraints
-- Where: `atc-drone/crates/atc-server/src/route_planner.rs` (`plan_airborne_route` sets `terrain = fetch_terrain_grid(...).await.ok().flatten()`)
+F-DRONE-023 — **P0 / Safety (FIXED)**: Airborne conflict reroute planning can silently drop terrain constraints
+- Where: `atc-drone/crates/atc-server/src/route_planner.rs` (`plan_airborne_route` now returns `None` when `terrain_require=1` and terrain fetch fails / returns no data)
 - Why it matters: when terrain fetch fails, reroute planning proceeds with `terrain=None` (effectively assuming 0m terrain), even if `ATC_TERRAIN_REQUIRE=1` in production. This can generate unsafe/illegal guidance.
-- Fix: honor `config.terrain_require` in `plan_airborne_route`: if terrain is required and fetch fails (or returns missing required samples), return `None` so the caller falls back to HOLD.
-- Verify: simulate a down terrain-api and confirm conflict reroute becomes HOLD + advisory, not a reroute that ignores terrain.
+- Fix (implemented): honor `config.terrain_require` in `plan_airborne_route`: if terrain is required and fetch fails (or returns no data), return `None` so the caller falls back to HOLD.
+- Verify:
+  - Manual code review confirms terrain fetch errors no longer downgrade to `terrain=None` when `terrain_require=1`.
+  - Recommended follow-up: simulate a down terrain-api and confirm conflict reroute becomes HOLD + advisory, not a reroute that ignores terrain.
 
 F-DRONE-024 — **P0 / Safety + Reliability (FIXED)**: SQLite command expiry filtering was broken (RFC3339 vs `datetime('now')`)
 - Status: FIXED in `atc-drone/crates/atc-server/src/persistence/commands.rs` (uses `datetime(expires_at)`), covered by `expired_commands_are_not_loaded_or_retained`.
