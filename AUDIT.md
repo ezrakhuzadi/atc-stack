@@ -471,15 +471,18 @@ F-DRONE-025 — **P0 / Security + Privacy (FIXED)**: WebSocket can silently beco
   - With `ATC_ENV=production`, WS handshake with `Authorization: Bearer $ATC_ADMIN_TOKEN` should succeed.
   - Follow-up hardening (P1): remove query-param token support entirely to reduce leakage via logs.
 
-F-DRONE-026 — **P1 / Safety + Reliability**: Active HOLD state is in-memory only and not reconstructed after restart
-- Where: `atc-drone/crates/atc-server/src/state/store.rs`
-  - `active_holds` is populated in `apply_command_ack_effects` when a HOLD is acknowledged
-  - `load_from_database` reloads only **pending** commands (acknowledged HOLDs are not replayed)
+F-DRONE-026 — **P1 / Safety + Reliability (FIXED)**: Active HOLD state is in-memory only and not reconstructed after restart
+- Where:
+  - `atc-drone/crates/atc-server/src/state/store.rs` (`load_from_database` now rebuilds `active_holds`)
+  - `atc-drone/crates/atc-server/src/persistence/commands.rs` (loads acknowledged HOLD/RESUME commands with `acked_at`)
 - Why it matters: after a restart, the system forgets which drones are still under an acknowledged HOLD, so it can:
   - show incorrect status (Holding → Active) after the next telemetry update
   - issue new commands while a HOLD is still supposed to be in effect (increasing thrash/instability)
-- Fix: persist HOLD state (e.g., `holds(drone_id, hold_until)`), or reconstruct it on startup by querying the latest acknowledged HOLD per drone and computing `hold_until` from `acked_at` + duration (capped by `expires_at`).
-- Verify: integration test: issue HOLD → ack → restart → verify the drone remains “holding” until expiry and that command issuance respects the hold.
+- Fix (implemented):
+  - On startup, ATC now replays acknowledged HOLD/RESUME effects (in ack order) to reconstruct `active_holds` using `hold_until = acked_at + duration_secs` (capped by `expires_at`).
+  - Added a regression test that issues HOLD → ack → reload state from the same DB → verifies the HOLD remains active.
+- Verify:
+  - `cargo test -p atc-server` (includes `state::store::tests::load_from_database_reconstructs_active_hold_state`).
 
 F-DRONE-027 — **P0 / Safety + Reliability (FIXED)**: “last_update” uses untrusted telemetry timestamps (time semantics are wrong system-wide)
 - Where:
