@@ -625,20 +625,23 @@ F-FRONTEND-005 — **P1 / Security + Launch readiness (FIXED)**: Default users +
 - Verify:
   - Add a “production config” startup test in CI that asserts process exits when defaults are enabled.
 
-F-FRONTEND-006 — **P1 / Security**: WebSocket proxy does not validate `Origin` (CSWSH hardening) and role logic is inconsistent (`admin` not treated as authority)
+F-FRONTEND-006 — **P1 / Security (FIXED)**: WebSocket proxy does not validate `Origin` (CSWSH hardening) and role logic is inconsistent (`admin` not treated as authority)
 - Where:
-  - `atc-frontend/server.js:1403`–`1415` (`buildAtcWsPath` treats only role === `authority` as authority)
-  - `atc-frontend/server.js:1417`–`1489` (WS upgrade path; forwards `Origin` but does not validate it)
+  - `atc-frontend/server.js` (`buildAtcWsPath` role handling)
+  - `atc-frontend/server.js` (WS upgrade handler validates `Origin`)
 - Why it matters:
   - If cookies are sent on cross-site WebSocket handshakes (browser variance + SameSite behavior), lack of Origin validation enables CSWSH.
   - Admin users unexpectedly lose “authority” behavior in WS filters (product correctness / access-control consistency).
 - Fix:
-  - Enforce Origin allowlist (exact scheme/host) for WS upgrades; reject on mismatch.
-  - Treat `admin` as authority (same as `isAuthority` elsewhere).
+  - Enforce Origin validation for WS upgrades:
+    - In production, reject missing/invalid Origin.
+    - Default: require same host (and `X-Forwarded-Proto` match when present).
+    - Optional allowlist via `ATC_WS_ALLOWED_ORIGINS` (comma-separated origins).
+  - Treat `admin` as authority (same as `authority`) when building WS query filters.
   - Consider requiring a per-session WS token (or short-lived signed token) in addition to cookies.
 - Verify:
-  - Browser-based test: attempt WS connection from a different Origin and assert rejection.
-  - Unit tests for `buildAtcWsPath` role behavior.
+  - Manual: attempt WS connection from a different Origin and assert rejection (403).
+  - Manual: confirm `admin` users can subscribe with `owner_id` filters like `authority`.
 
 F-FRONTEND-007 — **P2 / Product + Reliability**: Map keeps showing stale geofences when `atc-drone` is down (matches observed user report)
 - Where:
@@ -703,15 +706,15 @@ F-FRONTEND-011 — **P2 / Security + Ops**: Container hardening is minimal (runs
   - Container security scan (Trivy/Grype) as a CI job.
   - Confirm container runs with `USER node` (or similar) and that app still works.
 
-F-FRONTEND-012 — **P2 / Security + Reliability**: WS upgrade handler silently ignores unknown paths (socket leak / DoS risk)
+F-FRONTEND-012 — **P2 / Security + Reliability (FIXED)**: WS upgrade handler silently ignores unknown paths (socket leak / DoS risk)
 - Where:
   - `atc-frontend/server.js:1417`–`1425` (`server.on("upgrade")` returns early when `url.pathname !== atcWsProxyPath` without rejecting/closing the socket)
 - Why it matters: when you register an `upgrade` handler, you generally need to explicitly reject unknown upgrades. Returning without closing can leave sockets hanging, allowing cheap connection-flood DoS.
 - Fix:
-  - For any upgrade request not matching the proxy path, call `rejectUpgrade(socket, 404, "Not Found")` (or 400) and close immediately.
+  - For any upgrade request not matching the proxy path, call `rejectUpgrade(socket, 404, "Not Found")` and close immediately.
   - Add basic per-IP rate limiting for upgrades (or rely on a reverse proxy) if this is internet-exposed.
 - Verify:
-  - A test that attempts `ws://host/garbage` closes immediately with a non-101 response.
+  - Manual: `ws://host/garbage` closes immediately with a non-101 response.
 
 F-FRONTEND-013 — **P2 / Reliability + Ops**: Session storage can grow without explicit TTL/reaping (file-store default) and `/csrf` can create sessions on demand
 - Where:
