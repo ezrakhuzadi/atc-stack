@@ -848,18 +848,15 @@ F-BLENDER-002 — **P1 / Security + Availability (PARTIALLY FIXED)**: Auth middl
   - Load test demonstrating JWKS is fetched at most once per TTL window under concurrency.
   - Security test: token with wrong issuer is rejected even if signature is valid.
 
-F-BLENDER-003 — **P1 / Reliability + DoS**: `time.sleep()` inside Django views blocks worker threads
+F-BLENDER-003 — **P1 / Reliability + DoS (FIXED)**: `time.sleep()` inside Django views blocks worker threads
 - Where:
-  - `atc-blender/rid_operations/views.py:239`–`240`, `:422`–`423`
-  - `atc-blender/uss_operations/views.py:427`
+  - `atc-blender/rid_operations/views.py` (removed sleeps from request path)
+  - `atc-blender/uss_operations/views.py` (removed sleeps from request path)
 - Why it matters: synchronous sleeps tie up worker processes, increasing tail latency and enabling request-flood DoS (especially with low worker counts).
 - Fix:
-  - Remove sleeps from request path; move the “wait for data” behavior into:
-    - background tasks (Celery) and return 202/polling, or
-    - async endpoints with non-blocking waits (if using async stack end-to-end).
-  - If the intent is to “wait for Redis to fill,” replace with bounded polling with immediate return and client retry.
+  - Remove blocking sleeps from Django views; endpoints now return immediately with best-effort data rather than blocking worker threads.
 - Verify:
-  - Performance test: concurrency of 50+ requests does not exhaust workers due to sleeps; p95 latency stays bounded.
+  - Manual: concurrent requests no longer stall due to fixed sleeps in the request path.
 
 F-BLENDER-004 — **P1 / Correctness + Security**: Assertions used for request validation are unsafe and can disappear under `-O`
 - Where:
