@@ -962,17 +962,18 @@ F-BLENDER-007 — **P2 / Security + Hygiene**: `dump.rdb` is present in the repo
 - Verify:
   - CI check forbids committing `.rdb` dumps.
 
-F-BLENDER-008 — **P1 / Security**: GeoZone import-by-URL can be used as an SSRF primitive (token-holder can fetch arbitrary URLs)
+F-BLENDER-008 — **P1 / Security (FIXED)**: GeoZone import-by-URL can be used as an SSRF primitive (token-holder can fetch arbitrary URLs)
 - Where:
   - `atc-blender/geo_fence_operations/views.py:295`–`339` (`GeoZoneSourcesOperations.put` accepts a URL and queues `download_geozone_source`)
   - `atc-blender/geo_fence_operations/tasks.py:22`–`43` (`download_geozone_source` does `requests.get(geo_zone_url, ...)`)
 - Why it matters: URLValidator confirms “is a URL” but does not prevent internal network targets (e.g., `http://169.254.169.254/` cloud metadata, service mesh IPs, localhost). If this endpoint is reachable with a stolen token, it can be used to probe internal services.
-- Fix:
-  - Restrict allowed schemes to `https` (and optionally `http` only in dev).
-  - Block private IP ranges, localhost, link-local, and non-DNS hosts; enforce an allowlist of domains if possible.
-  - Add strict size/time limits on downloaded content and validate content type before parsing.
+- Fix (implemented):
+  - Added a shared SSRF guard: `atc-blender/geo_fence_operations/url_safety.py` (`validate_public_url`).
+  - Restricted allowed schemes to `https` (with `http` permitted only when `IS_DEBUG=1`).
+  - Blocks localhost, IP-literals in private/link-local/reserved ranges, and DNS names that resolve to disallowed IP ranges.
+  - Task fetch now enforces timeouts, a max download size (`GEOZONE_MAX_DOWNLOAD_BYTES`, default 5MB), rejects non-JSON content types, and follows only a limited number of redirects (`GEOZONE_MAX_REDIRECTS`, default 3) with re-validation at each hop.
 - Verify:
-  - Security tests attempting to fetch `http://127.0.0.1/` and `http://169.254.169.254/` are rejected.
+  - Unit test: `atc-blender/tests/test_geozone_url_safety.py`.
 
 F-BLENDER-009 — **P1 / Security + Launch readiness**: Django “secure by default” deployment settings are missing/implicit
 - Where:
