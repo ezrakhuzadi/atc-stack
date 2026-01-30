@@ -1241,20 +1241,21 @@ F-DSS-007 — **P1 / Reproducibility (FIXED)**: The stack mixes DSS *runtime* ar
   - `./tools/check_dss_pin.sh` passes.
   - `docker compose config` shows a single, consistent DSS version strategy, and the stack boots cleanly after `git clone --recurse-submodules`.
 
-F-DSS-008 — **P1 / Ops + Data hygiene**: No DSS eviction/cleanup job is configured → expired RID/SCD entries can accumulate indefinitely
+F-DSS-008 — **P1 / Ops + Data hygiene (FIXED)**: No DSS eviction/cleanup job is configured → expired RID/SCD entries can accumulate indefinitely
 - Where:
-  - There is no Compose service running `db-manager evict` on a schedule in `atc-stack/docker-compose.yml`.
-  - DSS provides an eviction tool: `atc-stack/interuss-dss/cmds/db-manager/cleanup/README.md:1` (instructions and flags).
+  - `atc-stack/docker-compose.yml`:
+    - RID: `local-dss-core` runs the built-in RID garbage collector periodically (controlled by `--garbage_collector_spec`, default `@every 30m`).
+    - SCD: `local-dss-cleanup` periodically deletes expired SCD rows (dev-only sandbox).
 - Why it matters:
   - Even in “demo” mode, long-running stacks accumulate expired RID ISAs/subscriptions and SCD objects, which can degrade performance and complicate debugging.
   - In any real deployment, predictable data retention is part of reliability.
 - Fix:
-  - Add an eviction mechanism appropriate to your deployment:
-    - Kubernetes: a CronJob running `db-manager evict` with pinned TTLs,
-    - Docker Compose: a periodic job container (or document a host cron calling `docker compose exec ... db-manager evict`).
-  - Start with “list-only” mode; enable `--delete` only after confirming results.
+  - Added a dev-only cleanup mechanism so long-running demos don’t accumulate unbounded DB state:
+    - `local-dss-cleanup` runs on the `dss` profile and deletes SCD `ends_at`-expired data older than `DSS_SCD_CLEANUP_RETENTION_HOURS` on a fixed schedule (`DSS_SCD_CLEANUP_INTERVAL_SECONDS`).
+  - For real deployments: use a production-appropriate retention mechanism (e.g. a Kubernetes CronJob) and pick TTLs based on operational needs.
 - Verify:
-  - A long-running (24h+) deployment does not show unbounded DB growth, and old entries disappear after the configured TTL.
+  - With the `dss` profile enabled, `local-dss-cleanup` is running and logs periodic cleanup cycles.
+  - After the configured retention window, expired SCD rows are removed (DB size does not grow unbounded over multi-day runs).
 
 F-DSS-009 — **P2 / Verification**: No automated DSS interoperability checks (prober / USS qualifier) are integrated into this stack
 - Where:
