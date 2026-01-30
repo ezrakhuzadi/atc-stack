@@ -318,11 +318,15 @@ F-DRONE-010 — **P1 / Correctness (FIXED)**: Command IDs are truncated (collisi
 - Fix: issue-command IDs now use the full UUID (`CMD-<uuid>`) rather than a truncated prefix.
 - Verify: manual (or add a unit test) that issued command IDs are full UUIDs and remain unique.
 
-F-DRONE-011 — **P1 / Reliability**: Flight plan state transitions are not persisted
-- Where: `atc-drone/crates/atc-server/src/loops/mission_loop.rs` mutates `plan.status`/`arrival_time` in memory only
+F-DRONE-011 — **P1 / Reliability (FIXED)**: Flight plan state transitions are not persisted
+- Where: `atc-drone/crates/atc-server/src/loops/mission_loop.rs` (mission execution status updates)
 - Why it matters: after restart, flight status can revert; operator UI/analytics become inconsistent; unsafe automation can happen if stale plans re-activate.
-- Fix: persist status transitions to DB (`flight_plans` upsert) or define that mission execution is stateless and recomputable (then implement that recomputation).
-- Verify: restart-resilience test: create approved plan → mission loop activates → restart → status remains correct.
+- Fix (implemented):
+  - Mission loop now persists `status` and `arrival_time` transitions using `state.add_flight_plan(...)` (DB upsert + in-memory update).
+  - Mission loop no longer holds DashMap locks across `.await` calls (it processes cloned plans and writes back only on transitions).
+  - Added regression tests asserting Approved→Active and Active→Completed transitions are persisted to the DB.
+- Verify:
+  - `cargo test -p atc-server` (includes `loops::mission_loop` persistence tests).
 
 F-DRONE-012 — **P2 / UX + Debuggability**: “ATC-drone down but geofences still visible” is expected with Blender TTL (needs explicit explanation in UI)
 - Where: `atc-drone/crates/atc-server/src/loops/geofence_sync_loop.rs` syncs geofences to Blender with `GEOFENCE_TTL_HOURS=6`
