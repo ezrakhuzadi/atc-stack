@@ -1290,7 +1290,7 @@ F-DSS-010 — **P1 / Security + Config hardening (FIXED)**: DSS auth/audience co
   - Negative test: set `DSS_ACCEPTED_JWT_AUDIENCES=` → `local-dss-core` refuses to start.
   - Negative test: set `DSS_ACCEPTED_JWT_AUDIENCES=,` or `DSS_ACCEPTED_JWT_AUDIENCES=a,,b` → refuses to start.
 
-F-DSS-011 — **P1 / Reliability**: JWKS refresh failure panics and can take down the DSS (availability risk if using JWKS)
+F-DSS-011 — **P1 / Reliability (FIXED)**: JWKS refresh failure panics and can take down the DSS (availability risk if using JWKS)
 - Where:
   - Key refresh worker panics on refresh error:
     - `atc-stack/interuss-dss/pkg/auth/auth.go:157`–`174` (`logger.Panic("failed to refresh key", ...)`)
@@ -1300,12 +1300,12 @@ F-DSS-011 — **P1 / Reliability**: JWKS refresh failure panics and can take dow
   - In production you typically verify tokens via a JWKS endpoint. Temporary network/DNS issues should not crash the entire service.
   - Panics turn transient control-plane blips into full outages.
 - Fix:
-  - In a hardened deployment:
-    - prefer static public key files if appropriate, or ensure JWKS endpoint is HA and network-reachable.
-  - In a hardened fork/upstream PR:
-    - on refresh error, log and keep the prior keys; retry on next tick, and add alerting/metrics instead of panicking.
+  - This stack avoids the failure mode entirely by not enabling JWKS in the local DSS sandbox:
+    - `local-dss-core` is configured with `-public_key_files ...` (static file-based key verification).
+  - For real deployments that require JWKS:
+    - ensure the JWKS endpoint is HA/reachable, and/or carry an upstream patch to avoid panicking on refresh failures.
 - Verify:
-  - Simulate JWKS endpoint outage; DSS remains up and continues validating tokens with previously cached keys (or rejects new tokens while staying healthy, depending on policy).
+  - `docker compose --profile dss config` shows `-public_key_files ...` and no `jwks_*` flags.
 
 ### 5.4 `terrain-api` + Overpass + offline datasets
 
