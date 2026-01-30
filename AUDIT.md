@@ -869,16 +869,17 @@ F-BLENDER-005 — **P1 / Performance + Reliability**: Redis `KEYS` is used for t
   - Load test with many tracks demonstrating Redis latency remains stable.
   - Unit test that `get_all_active_tracks_in_session` returns `ActiveTrack.observations` as a list.
 
-F-BLENDER-006 — **P0 / Ops Hazard**: Helper script can delete **all** Docker containers/volumes on the host
+F-BLENDER-006 — **P0 / Ops Hazard (FIXED)**: Helper script can delete **all** Docker containers/volumes on the host
 - Where:
   - `atc-blender/start_flight_blender.sh` (runs `docker rm -f $(docker ps -a -q)` and `docker volume rm $(docker volume ls -q)`, and stops system PostgreSQL)
 - Why it matters: running this script on a shared machine can destroy unrelated workloads and data. This is a “footgun” that should not exist in a safety-adjacent repo.
 - Fix:
-  - Remove the global cleanup commands entirely.
-  - Use `docker compose down -v --remove-orphans` scoped to the project only (and clearly warn users).
+  - Remove the global cleanup commands entirely (no `docker rm -f $(docker ps -a -q)` and no `docker volume rm $(docker volume ls -q)`).
+  - Use project-scoped compose cleanup only: default `docker compose down --remove-orphans`; optional `--reset` runs `docker compose down -v --remove-orphans`.
   - Do not stop host services (`systemctl stop postgresql`) from a project script.
 - Verify:
   - Manual review + a unit “shellcheck” gate; ensure the script only touches resources labeled for this compose project.
+  - `bash -n atc-blender/start_flight_blender.sh` passes.
 
 F-BLENDER-007 — **P2 / Security + Hygiene**: `dump.rdb` is present in the repo (potential data leak / confusion)
 - Where:
