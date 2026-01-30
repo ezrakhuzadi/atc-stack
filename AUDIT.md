@@ -734,21 +734,27 @@ F-FRONTEND-008 — **P2 / Product correctness**: Role checks treat `authority` a
 - Verify:
   - Add UI tests that admin can access authority pages and perform authority actions.
 
-F-FRONTEND-009 — **P2 / Security**: Proxy allowlist checks do not canonicalize paths (encoded path separator risk) and proxy-side authorization contains “accept unknown drone” behavior
+F-FRONTEND-009 — **P2 / Security (FIXED)**: Proxy allowlist checks do not canonicalize paths (encoded path separator risk) and proxy-side authorization contains “accept unknown drone” behavior
 - Where:
-  - `atc-frontend/server.js:896`–`933` (regex allowlist on `requestPath`)
-  - `atc-frontend/server.js:1006`–`1033` (`canAccessDrone` returns `true` when drone not found or has no `owner_id`)
-  - `atc-frontend/server.js:1077`–`1120` (proxy gate logic for commands/flights/intents)
+  - `atc-frontend/server.js` (`validateAtcProxyPath` + `getAtcProxyTarget` enforce canonical paths before allowlist checks / forwarding)
+  - `atc-frontend/server.js` (`canAccessDrone` denies unknown/unowned drones by default)
+  - `atc-frontend/tools/atc-proxy-smoke.js` (regression tests)
 - Why it matters:
   - If the upstream router treats `%2F` as `/`, a path may pass allowlist as a single segment but route differently upstream (class of allowlist bypass).
   - Allowing operations on “unknown/unowned” drones is risky when the proxy injects admin privileges for some endpoints; it must match the backend’s ownership/auth model exactly.
-- Fix:
-  - Canonicalize/normalize URL paths before allowlist checks (reject any encoded slashes/backslashes, dot-segments, or non-normalized paths).
-  - Make proxy-side ownership decisions explicit and conservative: if a drone is unknown, treat as forbidden (unless a deliberate “unowned allowed” mode is enabled).
-  - Prefer enforcing ownership in `atc-drone` (server-side RBAC) and keep proxy as a convenience layer, not a security boundary.
+- Fix (implemented):
+  - Canonicalize/normalize URL paths before allowlist checks:
+    - Reject any percent-encoding in the proxied path (prevents encoded slash/backslash bypasses).
+    - Reject dot-segments (`.` / `..`), empty segments, and backslashes.
+  - Make proxy-side ownership decisions explicit and conservative:
+    - Unknown drones are forbidden for non-authority users.
+    - Unowned drones are forbidden by default; `ATC_ALLOW_UNOWNED_DRONES=1` enables them in dev/test only (refused in production).
+  - Added regression coverage via `atc-frontend/tools/atc-proxy-smoke.js` (wired into `npm test`).
 - Verify:
-  - Add tests with encoded path separators and dot segments to assert the proxy rejects them.
-  - Add tests that operator accounts cannot issue commands to drones they do not own.
+  - `atc-frontend/tools/atc-proxy-smoke.js` asserts:
+    - Encoded path separators + dot segments are rejected with 400.
+    - Operators cannot issue commands to unknown/unowned/other-owned drones.
+    - Operators can issue commands to owned drones; proxy injects admin token upstream.
 
 F-FRONTEND-010 — **P1 / Product + Reliability (FIXED)**: Planner waypoint callbacks are duplicated / overwritten, contributing to brittle “waypoint state” bugs (including the reported “remove S clears all” incident)
 - Where:
