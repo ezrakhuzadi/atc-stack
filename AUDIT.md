@@ -793,17 +793,17 @@ F-FRONTEND-012 — **P2 / Security + Reliability (FIXED)**: WS upgrade handler s
 - Verify:
   - Manual: `ws://host/garbage` closes immediately with a non-101 response.
 
-F-FRONTEND-013 — **P2 / Reliability + Ops**: Session storage can grow without explicit TTL/reaping (file-store default) and `/csrf` can create sessions on demand
+F-FRONTEND-013 — **P2 / Reliability + Ops (FIXED)**: Session storage can grow without explicit TTL/reaping (file-store default) and `/csrf` can create sessions on demand
 - Where:
   - `atc-frontend/server.js:466`–`474` (file session store fallback; no explicit TTL/reap config)
   - `atc-frontend/server.js:532`–`536` (`GET /csrf` creates/stores CSRF token in session)
 - Why it matters: in non-Redis deployments (or misconfigured Redis), persistent file sessions can accumulate and fill disk. A public `/csrf` endpoint can also be hit repeatedly to create sessions and churn storage.
-- Fix:
-  - Prefer Redis in production, and explicitly configure session TTL and cleanup (both Redis key TTL and file-store reaping options).
-  - Consider requiring authentication for `/csrf` (or only issuing tokens after login) if you don’t need it for unauthenticated flows.
-  - Add per-IP request rate limiting for `/csrf` and other unauthenticated endpoints.
+- Fix (implemented):
+  - Session store TTL is now explicit for both Redis and file-store (`ATC_SESSION_TTL_SECONDS`, default 24h).
+  - File store now reaps expired sessions (`ATC_SESSION_REAP_INTERVAL_SECONDS`, default 1h).
+  - `/csrf` now requires an authenticated session (no anonymous session creation via token endpoint).
 - Verify:
-  - Load test that hits `/csrf` repeatedly and confirms sessions are reaped/TTL’d and disk usage stays bounded.
+  - Manual: hit `/csrf` unauthenticated and confirm it returns 401 without creating sessions.
 
 F-FRONTEND-014 — **P1 / Security + Product (FIXED)**: Role model is incomplete (e.g., `viewer` can still perform state-changing actions)
 - Where:
