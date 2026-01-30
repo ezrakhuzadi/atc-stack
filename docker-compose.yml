@@ -283,12 +283,17 @@ services:
         echo "[DSS] Refusing to start DSS sandbox when ATC_ENV=production" >&2
         exit 1
       fi
+      audiences="${DSS_ACCEPTED_JWT_AUDIENCES:-localhost,host.docker.internal,local-dss-core}"
+      if [ -z "$$audiences" ] || echo "$$audiences" | grep -qE '(^,|,,|,$)'; then
+        echo "[DSS] Invalid DSS accepted audiences: '$$audiences' (refusing to start)" >&2
+        exit 1
+      fi
       exec /usr/bin/core-service \
         -cockroach_host local-dss-crdb \
         -public_key_files /var/test-certs/auth2.pem \
         -log_format console \
         -addr :8082 \
-        -accepted_jwt_audiences localhost,host.docker.internal,local-dss-core \
+        -accepted_jwt_audiences "$$audiences" \
         -enable_scd \
         -enable_http \
         -locality local_dev

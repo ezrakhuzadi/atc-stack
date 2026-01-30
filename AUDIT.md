@@ -1191,16 +1191,20 @@ F-DSS-004 — **P0 / Security (FIXED)**: Dummy OAuth issues tokens from a bundle
   - `docker compose up -d` does not publish port 8085.
   - With `ATC_ENV=production`, `docker compose --profile dss up` causes dummy OAuth to refuse startup.
 
-F-DSS-005 — **P1 / Security + Transport**: Demo DSS runs with HTTP and insecure CockroachDB flags (must be hardened for production)
+F-DSS-005 — **P1 / Security + Transport (FIXED)**: Demo DSS runs with HTTP and insecure CockroachDB flags (must be hardened for production)
 - Where:
   - `atc-stack/docker-compose.yml:179`–`197` (`cockroach start --insecure`)
   - `atc-stack/docker-compose.yml:242`–`256` (`core-service -enable_http`)
 - Why it matters: network-layer protections (TLS, auth, least exposure) are part of safety/security posture; “working demo” settings will be copied forward unless explicitly gated.
 - Fix:
-  - For production: enable CockroachDB TLS/auth, enable DSS HTTPS, and validate TLS between components.
-  - Remove host port bindings except where absolutely required; prefer internal service-to-service networking.
+  - The local DSS is now explicitly a dev-only sandbox:
+    - behind the `dss` compose profile,
+    - host port bindings are loopback-only (`127.0.0.1:*`),
+    - all DSS sandbox services refuse to start when `ATC_ENV=production`.
+  - For real deployments: use a separate production deployment that enables DB+service TLS and removes all insecure flags.
 - Verify:
-  - Production compose/profile runs with TLS enabled end-to-end and no `--insecure` flags.
+  - With `ATC_ENV=production`, `docker compose --profile dss up` refuses startup.
+  - `docker compose --profile dss config` shows loopback-only host bindings (no public interface exposure).
 
 F-DSS-006 — **P1 / Reliability + Maintainability**: DSS Compose config uses deprecated/legacy flags and will break when upgrading DSS versions
 - Where:
@@ -1267,7 +1271,7 @@ F-DSS-009 — **P2 / Verification**: No automated DSS interoperability checks (p
 - Verify:
   - The DSS check is runnable in CI and/or locally and produces a pass/fail artifact you can attach to releases.
 
-F-DSS-010 — **P1 / Security + Config hardening**: DSS auth/audience configuration is easy to misconfigure; “missing accepted audiences” becomes “accept tokens without aud”
+F-DSS-010 — **P1 / Security + Config hardening (FIXED)**: DSS auth/audience configuration is easy to misconfigure; “missing accepted audiences” becomes “accept tokens without aud”
 - Where:
   - DSS core warns but does not fail fast when audiences are missing:
     - `atc-stack/interuss-dss/cmds/core-service/main.go:237`–`241` (`logger.Warn("missing required --accepted_jwt_audiences")`)
@@ -1278,13 +1282,13 @@ F-DSS-010 — **P1 / Security + Config hardening**: DSS auth/audience configurat
   - In a production DSS deployment, *audience* is one of the main guardrails preventing token replay across ecosystems.
   - If you accidentally omit `accepted_jwt_audiences`, it’s possible to accept tokens with no `aud` claim (depending on issuer behavior), weakening auth.
 - Fix:
-  - Treat `accepted_jwt_audiences` as mandatory for anything except a local sandbox:
-    - add a startup guard in your deployment tooling that refuses to start core-service unless this flag is explicitly set to a non-empty value,
-    - enforce real JWT issuance with correct `aud` in your OIDC provider.
-  - In a hardened fork/upstream PR: make `--accepted_jwt_audiences` required and treat empty as configuration error.
+  - The stack now treats `accepted_jwt_audiences` as mandatory (even in the local sandbox):
+    - `docker-compose.yml` sets `-accepted_jwt_audiences` from `DSS_ACCEPTED_JWT_AUDIENCES` (with a safe default),
+    - startup guard refuses to boot `local-dss-core` if audiences are empty or contain an empty entry (no leading/trailing comma, no `,,`).
+  - For real deployments: enforce real JWT issuance with correct `aud` in your OIDC provider.
 - Verify:
-  - Negative test: token without `aud` is rejected.
-  - Negative test: DSS refuses to boot when `accepted_jwt_audiences` is not provided in a production profile.
+  - Negative test: set `DSS_ACCEPTED_JWT_AUDIENCES=` → `local-dss-core` refuses to start.
+  - Negative test: set `DSS_ACCEPTED_JWT_AUDIENCES=,` or `DSS_ACCEPTED_JWT_AUDIENCES=a,,b` → refuses to start.
 
 F-DSS-011 — **P1 / Reliability**: JWKS refresh failure panics and can take down the DSS (availability risk if using JWKS)
 - Where:
