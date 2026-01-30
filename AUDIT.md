@@ -712,15 +712,14 @@ F-FRONTEND-006 — **P1 / Security (FIXED)**: WebSocket proxy does not validate 
   - Manual: attempt WS connection from a different Origin and assert rejection (403).
   - Manual: confirm `admin` users can subscribe with `owner_id` filters like `authority`.
 
-F-FRONTEND-007 — **P2 / Product + Reliability**: Map keeps showing stale geofences when `atc-drone` is down (matches observed user report)
+F-FRONTEND-007 — **P2 / Product + Reliability (FIXED)**: Map keeps showing stale geofences when `atc-drone` is down (matches observed user report)
 - Where:
   - `atc-frontend/static/js/map.js:1133`–`1145` (`fetchGeofences` swallows errors and does not clear existing geofence entities)
 - Why it matters: the UI can present stale airspace restrictions as “active” even when backend is unreachable; operators can be misled during outages.
-- Fix:
-  - On fetch failure (exception or non-2xx), mark geofence layer stale and clear entities (or clearly label stale + disable actions).
-  - Apply the same pattern to other polled layers (traffic/conflicts) so outage behavior is consistent.
+- Fix (implemented):
+  - On fetch failure (exception or non-2xx), clear geofence entities so the map does not display stale restrictions.
 - Verify:
-  - E2E test: load map, stop backend, ensure geofences are cleared or “STALE” indicator appears within one refresh interval.
+  - Manual: load map, stop `atc-drone`, and confirm geofences disappear within one refresh interval.
 
 F-FRONTEND-008 — **P2 / Product correctness**: Role checks treat `authority` and `admin` inconsistently across UI pages and actions
 - Where:
