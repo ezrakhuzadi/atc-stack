@@ -407,11 +407,22 @@ F-DRONE-021 — **P0 / Security (FIXED)**: `owner_id` is effectively unauthentic
 - Verify:
   - Unit test `telemetry_cannot_spoof_owner_id` (in `atc-drone/crates/atc-server/src/api/tests.rs`) ensures telemetry with a spoofed `owner_id` does not change the stored owner.
 
-F-DRONE-022 — **P1 / Safety**: Geofence validation is incomplete (can accept malformed polygons)
-- Where: `atc-drone/crates/atc-core/src/models.rs` (`Geofence::validate`)
+F-DRONE-022 — **P1 / Safety (FIXED)**: Geofence validation is incomplete (can accept malformed polygons)
+- Where:
+  - `atc-drone/crates/atc-core/src/models.rs` (`Geofence::validate`)
+  - `atc-drone/crates/atc-server/src/state/store.rs` (invalid geofences are skipped on load/ingest)
 - Why it matters: malformed polygons (NaNs/out-of-range coords, self-intersections, duplicate vertices, zero area) can cause incorrect containment/intersection results, weakening a core safety control.
-- Fix: extend validation: enforce finite + range checks for every vertex; enforce minimum unique vertices; reject self-intersections (or normalize); require non-zero area; ensure polygon is closed exactly (not just within epsilon).
-- Verify: unit tests for invalid polygons and a set of known-good polygons.
+- Fix (implemented):
+  - Enforce strict geofence polygon validation:
+    - finite + range checks for every vertex
+    - explicit closure (`first == last`)
+    - no duplicate vertices / no zero-length edges
+    - non-zero area
+    - no self-intersections
+  - Require finite altitudes.
+  - Skip invalid geofences loaded from DB or received as external geofences (logged + dropped).
+- Verify:
+  - Unit tests added in `atc-drone/crates/atc-core/src/models.rs` for invalid polygons and a known-good polygon.
 
 F-DRONE-023 — **P0 / Safety (FIXED)**: Airborne conflict reroute planning can silently drop terrain constraints
 - Where: `atc-drone/crates/atc-server/src/route_planner.rs` (`plan_airborne_route` now returns `None` when `terrain_require=1` and terrain fetch fails / returns no data)
