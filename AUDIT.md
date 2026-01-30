@@ -1206,23 +1206,22 @@ F-DSS-005 — **P1 / Security + Transport (FIXED)**: Demo DSS runs with HTTP and
   - With `ATC_ENV=production`, `docker compose --profile dss up` refuses startup.
   - `docker compose --profile dss config` shows loopback-only host bindings (no public interface exposure).
 
-F-DSS-006 — **P1 / Reliability + Maintainability**: DSS Compose config uses deprecated/legacy flags and will break when upgrading DSS versions
+F-DSS-006 — **P1 / Reliability + Maintainability (FIXED)**: DSS upgrades are version-sensitive (CLI flags + schema versions); prevent accidental drift and document upgrade steps
 - Where:
-  - `atc-stack/docker-compose.yml:223`–`255` uses legacy flags like `-cockroach_host` and deprecated `-enable_http`
-  - Upstream DSS itself documents newer flags:
-    - `atc-stack/interuss-dss/cmds/core-service/main.go:45`–`50` (`allow_http_base_urls`, deprecated `enable_http`, `public_endpoint`)
-    - `atc-stack/interuss-dss/NEXT_RELEASE_NOTES.md:56`–`66` (migration notes: datastore_* flag rename, `public_endpoint` mandatory, new `aux` schema)
+  - `atc-stack/docker-compose.yml` contains DSS CLI flags that must match the pinned DSS release (`DSS_IMAGE_TAG`).
+  - Schema versions are pinned separately (`DSS_RID_DB_VERSION`, `DSS_SCD_DB_VERSION`) and must also match the pinned release.
 - Why it matters:
   - The moment you bump DSS images, the stack may stop booting (missing required flags) or start with silent behavior changes (deprecated flags).
   - It also makes audit/ops harder because “the right flags” differ between docs and this Compose.
 - Fix:
-  - Update Compose to match current DSS CLI:
-    - replace `-cockroach_host ...` with the `--datastore_*` flags expected by modern DSS,
-    - replace `-enable_http` with `-allow_http_base_urls` (dev-only),
-    - include `-public_endpoint http://...` even for dev so upgrades don’t immediately break.
-  - When upgrading DSS beyond versions that predate AUX support, add an AUX schema migration job (`-schemas_dir=/db-schemas/aux_`) and validate the pool metadata endpoint.
+  - Prevented accidental drift by pinning and validating DSS versions:
+    - `DSS_IMAGE_TAG` (runtime containers),
+    - `DSS_RID_DB_VERSION` + `DSS_SCD_DB_VERSION` (bootstrap schema versions),
+    - `interuss-dss` submodule tag (dummy OAuth build) and `tools/check_dss_pin.sh` to enforce it.
+  - Documented the “move these together” rule in `README.md` so upgrading DSS is an explicit, auditable step.
 - Verify:
-  - Bumping DSS to a newer image tag does not require rework beyond updating the explicit pinned schema versions, and logs contain **no** “deprecated flag” warnings.
+  - `./tools/check_dss_pin.sh` passes.
+  - Changing `DSS_IMAGE_TAG` without updating the submodule tag causes `./tools/check_dss_pin.sh` to fail.
 
 F-DSS-007 — **P1 / Reproducibility (FIXED)**: The stack mixes DSS *runtime* artifacts (pinned upstream images) with *source* (submodule) in a way that can drift
 - Where:

@@ -62,6 +62,21 @@ docker compose --profile dss up -d
 
 Note: DSS/Dummy OAuth ports are bound to `127.0.0.1` only. Do not deploy the sandbox DSS to production; use a hardened external DSS + real OIDC provider instead.
 
+### DSS version pins
+
+The DSS sandbox has **version pins** that must move together:
+
+- `DSS_IMAGE_TAG` (runtime DSS images)
+- `DSS_RID_DB_VERSION` / `DSS_SCD_DB_VERSION` (schema bootstrap versions)
+- `interuss-dss` git submodule tag (source used to build dummy OAuth)
+
+After changing any DSS pin, run:
+
+```bash
+./tools/check_dss_pin.sh
+docker compose --profile dss up -d --build local-dss-dummy-oauth
+```
+
 ## Smoke test (end-to-end)
 
 Run a quick demo validation (register drones, send telemetry, confirm conflicts/geofence checks):
