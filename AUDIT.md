@@ -295,11 +295,16 @@ F-DRONE-007 — **P0 / Security (FIXED)**: Missing global request body size limi
   - Manual: send a payload larger than 1MiB to any JSON endpoint and confirm `413 Payload Too Large`.
   - Recommended follow-up: add an API regression test that asserts 413.
 
-F-DRONE-008 — **P1 / Security**: WebSocket token accepted via query param (leak-prone)
-- Where: `atc-drone/crates/atc-server/src/api/ws.rs` (`WsQuery { token }`), `atc-drone/crates/atc-server/src/api/commands.rs` (`CommandStreamQuery { token }`)
+F-DRONE-008 — **P1 / Security (FIXED)**: WebSocket token accepted via query param (leak-prone)
+- Where:
+  - `atc-drone/crates/atc-server/src/api/ws.rs` (no query token; Authorization only)
+  - `atc-drone/crates/atc-server/src/api/commands.rs` (no query token; Authorization only)
 - Why it matters: query strings leak via logs/proxies/history; harder to secure.
-- Fix: accept only `Authorization: Bearer …` for WS upgrade. If browser constraints exist, terminate WS at `atc-frontend` and authenticate via session cookie there (already the architecture).
-- Verify: ensure server rejects query-token in production; update frontend proxy accordingly.
+- Fix (implemented):
+  - Server now accepts tokens only via `Authorization: Bearer …` for WebSocket upgrades.
+  - Legacy query-string `?token=...` is no longer parsed/accepted.
+- Verify:
+  - Manual: WS upgrade with only `?token=...` is rejected; upgrade with `Authorization: Bearer ...` succeeds.
 
 F-DRONE-009 — **P1 / Security/Scale**: Drone token lookup is O(N) and tokens are stored in plaintext
 - Where: `atc-drone/crates/atc-server/src/state/store.rs` (`drone_tokens: DashMap<String,String>`, `drone_id_for_token` loops, `validate_drone_token` plaintext compare)
