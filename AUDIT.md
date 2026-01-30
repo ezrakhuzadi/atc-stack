@@ -553,7 +553,7 @@ F-FRONTEND-001 — **P0 / Security (FIXED)**: XSS surface via `innerHTML` + inli
   - Add an end-to-end security test that registers a drone with an ID containing quotes/HTML and asserts no script execution (Cypress/Playwright).
   - Add a lint rule or grep gate in CI forbidding `onclick="` and requiring escaping for `innerHTML` templating.
 
-F-FRONTEND-002 — **P0 / Security (PARTIALLY FIXED)**: CSP weakens XSS defense (`script-src-attr 'unsafe-inline'`, `style-src 'unsafe-inline'`), and `JSON.stringify` is injected into a `<script>` context unsafely
+F-FRONTEND-002 — **P0 / Security (FIXED)**: CSP weakens XSS defense (`script-src-attr 'unsafe-inline'`, `style-src 'unsafe-inline'`), and `JSON.stringify` is injected into a `<script>` context unsafely
 - Where:
   - `atc-frontend/server.js:371`–`425` (CSP header; includes `script-src-attr 'unsafe-inline'` and `style-src 'unsafe-inline'`; planner assets additionally allow `'unsafe-inline' 'unsafe-eval'` scripts).
   - `atc-frontend/views/layouts/main.ejs:43`–`57` (`window.APP_USER = <%- JSON.stringify(user || null) %>;` etc)
@@ -563,12 +563,15 @@ F-FRONTEND-002 — **P0 / Security (PARTIALLY FIXED)**: CSP weakens XSS defense 
 - Fix:
   - Remove `script-src-attr 'unsafe-inline'` and refactor inline handlers into JS (`addEventListener`).
   - Replace `JSON.stringify` templating with a safe serializer for `<script>` context (escape `<` as `\\u003c`, `</script` defenses). Common options: `serialize-javascript` or a small local helper.
-  - Remove `style-src 'unsafe-inline'` by moving inline styles to CSS or using hashed styles if unavoidable.
+  - Remove `style-src 'unsafe-inline'` from the main app CSP:
+    - Use nonce-based `<style nonce="...">` where inline `<style>` blocks exist.
+    - Keep legacy inline `style="..."` support via `style-src-attr 'unsafe-inline'` (needed for existing templates and Cesium UI behavior).
   - Keep the “planner” CSP exception tightly scoped; consider migrating planner to nonce-based scripts instead of `unsafe-inline`.
 - Status:
   - **DONE**: removed `script-src-attr 'unsafe-inline'` from CSP and eliminated inline event handlers across the UI.
   - **DONE**: replaced raw `<%- JSON.stringify(...) %>` in `views/layouts/main.ejs` with `safeJson(...)` (server-side helper that escapes `<` etc for `<script>` context).
-  - **TODO**: remove `style-src 'unsafe-inline'` (requires removing inline `style="..."` usage and nonced inline `<style>` tags where needed).
+  - **DONE**: removed `style-src 'unsafe-inline'` from the main app CSP and added nonces to inline `<style>` blocks.
+  - **TODO (P1)**: remove `style-src-attr 'unsafe-inline'` by migrating remaining `style="..."` usage to CSS classes (and confirm Cesium does not require inline styles).
 - Verify:
   - Add a CSP regression test in CI that checks response headers for the expected policy (no `unsafe-inline` attributes).
   - Add a unit test that renders `layouts/main.ejs` with a name containing `</script>` and asserts output is still a single script block (or escapes).
