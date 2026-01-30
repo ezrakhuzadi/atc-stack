@@ -916,17 +916,20 @@ F-BLENDER-003 — **P1 / Reliability + DoS (FIXED)**: `time.sleep()` inside Djan
 - Verify:
   - Manual: concurrent requests no longer stall due to fixed sleeps in the request path.
 
-F-BLENDER-004 — **P1 / Correctness + Security**: Assertions used for request validation are unsafe and can disappear under `-O`
+F-BLENDER-004 — **P1 / Correctness + Security (FIXED)**: Assertions used for request validation are unsafe and can disappear under `-O`
 - Where:
   - `atc-blender/geo_fence_operations/views.py:67`
   - `atc-blender/flight_feed_operations/views.py:137`
   - Multiple asserts in helpers (e.g., `atc-blender/rid_operations/dss_rid_helper.py`, `atc-blender/scd_operations/dss_scd_helper.py`)
 - Why it matters: `assert` is not a validation mechanism in production (it can be stripped). It also returns 500-style failures rather than clean 4xx responses.
-- Fix:
-  - Replace asserts with explicit checks + proper HTTP errors (415/400/422) in request handlers.
-  - Replace helper asserts with typed validation + structured exceptions, then map to safe responses.
+- Status:
+  - **DONE**: replaced all validation-related `assert` statements with explicit checks in request handlers and DSS/constraints helpers.
+  - **DONE**: added regression test `atc-blender/tests/test_no_assert_validation.py` to prevent reintroducing assert-based validation.
+- Fix (implemented):
+  - Use Content-Type parsing (supports `application/json; charset=utf-8`) and return 415 on non-JSON/missing Content-Type.
+  - Return structured errors (no `None` tokens / KeyErrors) when DSS audience/token config is missing.
 - Verify:
-  - Run the service with Python optimizations and ensure behavior is unchanged (validation still enforced).
+  - Unit test: `atc-blender/tests/test_no_assert_validation.py`.
 
 F-BLENDER-005 — **P1 / Performance + Reliability (FIXED)**: Redis `KEYS` is used for track enumeration and one path returns malformed `ActiveTrack.observations`
 - Where:
