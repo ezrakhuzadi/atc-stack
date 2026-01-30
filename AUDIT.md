@@ -721,17 +721,20 @@ F-FRONTEND-007 — **P2 / Product + Reliability (FIXED)**: Map keeps showing sta
 - Verify:
   - Manual: load map, stop `atc-drone`, and confirm geofences disappear within one refresh interval.
 
-F-FRONTEND-008 — **P2 / Product correctness**: Role checks treat `authority` and `admin` inconsistently across UI pages and actions
+F-FRONTEND-008 — **P2 / Product correctness (FIXED)**: Role checks treat `authority` and `admin` inconsistently across UI pages and actions
 - Where:
   - `atc-frontend/routes/control.js:72`–`74` and `:88`–`90` (authority-only views; admin excluded)
   - `atc-frontend/static/js/geofences.js:31`–`32` (`canManage` only checks role === `authority`)
-  - `atc-frontend/server.js:1405`–`1408` (`buildAtcWsPath` excludes admin)
+  - `atc-frontend/static/js/api-client.js` + `static/js/map.js` + `static/js/conflicts.js` (owner filters treat admin as non-authority)
 - Why it matters: “admin” should generally be a superset role; inconsistent checks cause confusing UX and may lead to operators using lower-privileged accounts incorrectly.
-- Fix:
-  - Normalize role checks: treat `admin` as `authority` everywhere (or define clear RBAC scopes and implement consistently).
-  - Add a single helper (server + client) for `isAuthorityOrAdmin()`.
+- Fix (implemented):
+  - Normalized role checks to treat `admin` as `authority` across the UI:
+    - `routes/control.js` now allows `admin` to access authority-only pages (conflicts, analytics).
+    - `static/js/geofences.js` allows `admin` to manage geofences.
+    - Client-side owner filtering now treats `admin` as unfiltered (like `authority`) in `static/js/api-client.js`, `static/js/map.js`, and `static/js/conflicts.js`.
+  - Added a shared helper `isAuthorityOrAdmin()` to `window.ATCUtils` (via `static/js/api-client.js`).
 - Verify:
-  - Add UI tests that admin can access authority pages and perform authority actions.
+  - Manual: login as `admin` and confirm conflicts/analytics/geofences management are available and show unfiltered data.
 
 F-FRONTEND-009 — **P2 / Security (FIXED)**: Proxy allowlist checks do not canonicalize paths (encoded path separator risk) and proxy-side authorization contains “accept unknown drone” behavior
 - Where:
