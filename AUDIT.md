@@ -1150,13 +1150,15 @@ F-DSS-001 — **P0 / Launch readiness (FIXED)**: The bundled DSS is explicitly a
   - `docker compose up -d` does **not** start any `local-dss-*` containers and does not publish DSS/Dummy OAuth ports.
   - With `ATC_ENV=production`, `docker compose --profile dss up` causes DSS/Dummy OAuth containers to refuse startup.
 
-F-DSS-002 — **P1 / Reliability**: DSS schema bootstrapping uses `-db_version latest` (reproducibility risk)
+F-DSS-002 — **P1 / Reliability (FIXED)**: DSS schema bootstrapping uses `-db_version latest` (reproducibility risk)
 - Where:
   - `atc-stack/docker-compose.yml:220`–`240` (`db-manager ... -db_version latest`)
 - Why it matters: “latest” can change out from under you as the upstream DSS evolves; it can introduce drift between schema expectations and the pinned DSS image version.
-- Fix:
-  - Pin DSS schema version explicitly to match the DSS image tag (or run `db-manager` from the same versioned image and pin its `-db_version` to that release).
-  - Capture an upgrade procedure (schema bump + image bump + validation).
+- Status:
+  - **DONE**: pinned RID/SCD schema bootstrapping versions via `DSS_RID_DB_VERSION` / `DSS_SCD_DB_VERSION` (defaults aligned with the `interuss/dss` image in `docker-compose.yml`).
+- Fix (implemented):
+  - `local-dss-rid-bootstrapper` now uses `-db_version ${DSS_RID_DB_VERSION:-4.0.0}`.
+  - `local-dss-scd-bootstrapper` now uses `-db_version ${DSS_SCD_DB_VERSION:-3.1.0}`.
 - Verify:
   - Fresh bring-up from scratch yields identical schema and a green healthcheck across runs.
 

@@ -242,7 +242,7 @@ services:
         echo "[DSS] Refusing to start DSS sandbox when ATC_ENV=production" >&2
         exit 1
       fi
-      exec /usr/bin/db-manager -schemas_dir=/db-schemas/rid -db_version latest -cockroach_host local-dss-crdb
+      exec /usr/bin/db-manager -schemas_dir=/db-schemas/rid -db_version ${DSS_RID_DB_VERSION:-4.0.0} -cockroach_host local-dss-crdb
     depends_on:
       local-dss-crdb-init:
         condition: service_completed_successfully
@@ -262,7 +262,7 @@ services:
         echo "[DSS] Refusing to start DSS sandbox when ATC_ENV=production" >&2
         exit 1
       fi
-      exec /usr/bin/db-manager -schemas_dir=/db-schemas/scd -db_version latest -cockroach_host local-dss-crdb
+      exec /usr/bin/db-manager -schemas_dir=/db-schemas/scd -db_version ${DSS_SCD_DB_VERSION:-3.1.0} -cockroach_host local-dss-crdb
     depends_on:
       local-dss-crdb-init:
         condition: service_completed_successfully
