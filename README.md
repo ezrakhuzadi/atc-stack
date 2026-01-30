@@ -4,7 +4,7 @@ Reproducible unified Docker Compose stack for:
 - `atc-drone` (Rust backend)
 - `atc-frontend` (Node/Express UI + proxy)
 - `atc-blender` (Django Flight Blender)
-- `interuss-dss` (local DSS sandbox)
+- `interuss-dss` (local DSS sandbox, optional)
 - `terrain-api` (local Copernicus DEM elevation service)
 - `mock-uss` (tiny demo USS)
 
@@ -43,6 +43,22 @@ This stack expects host data directories at:
 ```bash
 docker compose up -d
 ```
+
+## DSS (optional local sandbox)
+
+By default, the stack runs Flight Blender in **standalone** mode (no DSS integration).
+
+To run the bundled InterUSS DSS **local sandbox** (dev-only; uses insecure DB + dummy OAuth + test keys), enable the `dss` profile:
+
+```bash
+# in .env
+BLENDER_USSP_NETWORK_ENABLED=1
+
+# start stack + DSS sandbox
+docker compose --profile dss up -d
+```
+
+Note: DSS/Dummy OAuth ports are bound to `127.0.0.1` only. Do not deploy the sandbox DSS to production; use a hardened external DSS + real OIDC provider instead.
 
 ## Smoke test (end-to-end)
 

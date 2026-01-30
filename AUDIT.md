@@ -1060,7 +1060,7 @@ F-BLENDER-019 — **P1 / Ops + Reliability**: `ALLOWED_HOSTS` defaults are not a
 
 **interuss-dss findings (write-as-we-go; do not delete)**
 
-F-DSS-001 — **P0 / Launch readiness**: The bundled DSS is explicitly a *local sandbox* (insecure DB, dummy OAuth, test keys) and must not be treated as production-ready
+F-DSS-001 — **P0 / Launch readiness (FIXED)**: The bundled DSS is explicitly a *local sandbox* (insecure DB, dummy OAuth, test keys) and must not be treated as production-ready
 - Where:
   - `atc-stack/docker-compose.yml:179`–`300` (CockroachDB `--insecure`, `local-dss-dummy-oauth`, and mounted `build/test-certs`)
 - Why it matters: the stack currently uses:
@@ -1069,13 +1069,16 @@ F-DSS-001 — **P0 / Launch readiness**: The bundled DSS is explicitly a *local 
   - test certificates/keys mounted into containers.
   This is fine for demos, but catastrophic if someone “just deploys compose” to production.
 - Fix:
-  - Treat DSS as an external hardened dependency in production:
-    - secure CockroachDB (TLS, auth),
-    - real OAuth/OIDC provider,
-    - rotated secrets and per-environment cert material.
-  - Add an explicit “refuse to start in production” guard in compose or entrypoints when dummy OAuth / insecure flags are set.
+  - Make the DSS sandbox **opt-in**:
+    - `local-dss-*` and `mock-uss` are now behind the `dss` compose profile (not started by default).
+    - Host port bindings for DSS/Dummy OAuth are bound to `127.0.0.1` only.
+  - Add a hard “refuse to start in production” guard:
+    - `local-dss-*` and `local-dss-dummy-oauth` exit immediately when `ATC_ENV=production`.
+  - Run Flight Blender standalone by default:
+    - `USSP_NETWORK_ENABLED` now defaults to `0` in `docker-compose.yml`.
 - Verify:
-  - A “production config” CI check that fails if `--insecure` or dummy OAuth is enabled in prod profiles.
+  - `docker compose up -d` does **not** start any `local-dss-*` containers and does not publish DSS/Dummy OAuth ports.
+  - With `ATC_ENV=production`, `docker compose --profile dss up` causes DSS/Dummy OAuth containers to refuse startup.
 
 F-DSS-002 — **P1 / Reliability**: DSS schema bootstrapping uses `-db_version latest` (reproducibility risk)
 - Where:
@@ -1100,18 +1103,21 @@ F-DSS-003 — **P2 / Security + Supply chain**: DSS container image includes tes
 - Verify:
   - Container runs as non-root and still passes health checks in a hardened profile.
 
-F-DSS-004 — **P0 / Security**: Dummy OAuth issues tokens from a bundled private key and is bound to a host port in the demo stack
+F-DSS-004 — **P0 / Security (FIXED)**: Dummy OAuth issues tokens from a bundled private key and is bound to a host port in the demo stack
 - Where:
   - `atc-stack/docker-compose.yml:278`–`300` (`local-dss-dummy-oauth` binds `8085:8085` and uses `/var/test-certs/auth2.key`)
   - `interuss-dss/build/test-certs/auth2.key` (private key shipped for local testing)
   - `interuss-dss/cmds/dummy-oauth/Dockerfile` (copies `build/test-certs` into the image; no `USER` set → runs as root)
 - Why it matters: anyone who can reach port 8085 can mint valid-looking tokens for the local DSS. That’s acceptable only for isolated local sandboxing; it is catastrophic if exposed to any untrusted network.
 - Fix:
-  - Never bind dummy OAuth to a public interface in non-local environments; keep it on an internal network only.
-  - Add an explicit “refuse to start” guard when any production flag/profile is enabled and dummy OAuth/test keys are configured.
+  - Dummy OAuth is now dev-only and opt-in:
+    - behind the `dss` compose profile
+    - host binding is `127.0.0.1:8085` (not a public interface)
+  - Dummy OAuth refuses to start when `ATC_ENV=production`.
   - For real deployments, replace with a real OIDC provider and rotated keys.
 - Verify:
-  - A production profile removes dummy OAuth entirely and DSS refuses to start if test keys are mounted.
+  - `docker compose up -d` does not publish port 8085.
+  - With `ATC_ENV=production`, `docker compose --profile dss up` causes dummy OAuth to refuse startup.
 
 F-DSS-005 — **P1 / Security + Transport**: Demo DSS runs with HTTP and insecure CockroachDB flags (must be hardened for production)
 - Where:

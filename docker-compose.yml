@@ -166,17 +166,31 @@ services:
       - interop_ecosystem_network
 
   # ===========================================
-  # InterUSS DSS (Local Sandbox)
+  # InterUSS DSS (Local Sandbox; dev-only)
   # ===========================================
   local-dss-crdb:
     image: cockroachdb/cockroach:v24.1.3
     container_name: local-dss-crdb
+    profiles: ["dss"]
     restart: unless-stopped
+    environment:
+      - ATC_ENV=${ATC_ENV:-development}
+    entrypoint: ["/bin/sh", "-lc"]
     # Keep Cockroach memory bounded for laptops/small VMs (stability > throughput for demo).
-    command: start --insecure --listen-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --join=local-dss-crdb:26257 --cache=256MiB --max-sql-memory=256MiB
+    command: |
+      if [ "${ATC_ENV:-development}" = "production" ]; then
+        echo "[DSS] Refusing to start DSS sandbox when ATC_ENV=production" >&2
+        exit 1
+      fi
+      exec cockroach start --insecure \
+        --listen-addr=0.0.0.0:26257 \
+        --http-addr=0.0.0.0:8080 \
+        --join=local-dss-crdb:26257 \
+        --cache=256MiB \
+        --max-sql-memory=256MiB
     ports:
-      - "26257:26257"
-      - "8080:8080"
+      - "127.0.0.1:26257:26257"
+      - "127.0.0.1:8080:8080"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health?ready=1"]
       interval: 30s
@@ -190,10 +204,17 @@ services:
   local-dss-crdb-init:
     image: cockroachdb/cockroach:v24.1.3
     container_name: local-dss-crdb-init
+    profiles: ["dss"]
+    environment:
+      - ATC_ENV=${ATC_ENV:-development}
     entrypoint: ["/bin/sh", "-lc"]
     command:
       - |
         set -euo pipefail
+        if [ "${ATC_ENV:-development}" = "production" ]; then
+          echo "[DSS] Refusing to start DSS sandbox when ATC_ENV=production" >&2
+          exit 1
+        fi
         echo "[DSS] Initializing CockroachDB (idempotent)..."
         for i in $$(seq 1 60); do
           out="$$(cockroach init --insecure --host=local-dss-crdb:26257 2>&1)" && exit 0
@@ -212,7 +233,16 @@ services:
   local-dss-rid-bootstrapper:
     image: interuss/dss:v0.15.0
     container_name: local-dss-rid-bootstrapper
-    command: /usr/bin/db-manager -schemas_dir=/db-schemas/rid -db_version latest -cockroach_host local-dss-crdb
+    profiles: ["dss"]
+    environment:
+      - ATC_ENV=${ATC_ENV:-development}
+    entrypoint: ["/bin/sh", "-lc"]
+    command: |
+      if [ "${ATC_ENV:-development}" = "production" ]; then
+        echo "[DSS] Refusing to start DSS sandbox when ATC_ENV=production" >&2
+        exit 1
+      fi
+      exec /usr/bin/db-manager -schemas_dir=/db-schemas/rid -db_version latest -cockroach_host local-dss-crdb
     depends_on:
       local-dss-crdb-init:
         condition: service_completed_successfully
@@ -223,7 +253,16 @@ services:
   local-dss-scd-bootstrapper:
     image: interuss/dss:v0.15.0
     container_name: local-dss-scd-bootstrapper
-    command: /usr/bin/db-manager -schemas_dir=/db-schemas/scd -db_version latest -cockroach_host local-dss-crdb
+    profiles: ["dss"]
+    environment:
+      - ATC_ENV=${ATC_ENV:-development}
+    entrypoint: ["/bin/sh", "-lc"]
+    command: |
+      if [ "${ATC_ENV:-development}" = "production" ]; then
+        echo "[DSS] Refusing to start DSS sandbox when ATC_ENV=production" >&2
+        exit 1
+      fi
+      exec /usr/bin/db-manager -schemas_dir=/db-schemas/scd -db_version latest -cockroach_host local-dss-crdb
     depends_on:
       local-dss-crdb-init:
         condition: service_completed_successfully
@@ -234,19 +273,27 @@ services:
   local-dss-core:
     image: interuss/dss:v0.15.0
     container_name: local-dss-core
+    profiles: ["dss"]
     restart: unless-stopped
-    command: >
-      /usr/bin/core-service
-      -cockroach_host local-dss-crdb
-      -public_key_files /var/test-certs/auth2.pem
-      -log_format console
-      -addr :8082
-      -accepted_jwt_audiences localhost,host.docker.internal,local-dss-core
-      -enable_scd
-      -enable_http
-      -locality local_dev
+    environment:
+      - ATC_ENV=${ATC_ENV:-development}
+    entrypoint: ["/bin/sh", "-lc"]
+    command: |
+      if [ "${ATC_ENV:-development}" = "production" ]; then
+        echo "[DSS] Refusing to start DSS sandbox when ATC_ENV=production" >&2
+        exit 1
+      fi
+      exec /usr/bin/core-service \
+        -cockroach_host local-dss-crdb \
+        -public_key_files /var/test-certs/auth2.pem \
+        -log_format console \
+        -addr :8082 \
+        -accepted_jwt_audiences localhost,host.docker.internal,local-dss-core \
+        -enable_scd \
+        -enable_http \
+        -locality local_dev
     ports:
-      - "8082:8082"
+      - "127.0.0.1:8082:8082"
     depends_on:
       local-dss-rid-bootstrapper:
         condition: service_completed_successfully
@@ -272,10 +319,19 @@ services:
       context: ./interuss-dss
       dockerfile: cmds/dummy-oauth/Dockerfile
     container_name: local-dss-dummy-oauth
+    profiles: ["dss"]
     restart: unless-stopped
-    command: -private_key_file /var/test-certs/auth2.key
+    environment:
+      - ATC_ENV=${ATC_ENV:-development}
+    entrypoint: ["/bin/sh", "-lc"]
+    command: |
+      if [ "${ATC_ENV:-development}" = "production" ]; then
+        echo "[DSS] Refusing to start dummy OAuth when ATC_ENV=production" >&2
+        exit 1
+      fi
+      exec /usr/bin/dummy-oauth -private_key_file /var/test-certs/auth2.key
     ports:
-      - "8085:8085"
+      - "127.0.0.1:8085:8085"
     volumes:
       - ./interuss-dss/build/test-certs:/var/test-certs:ro
     healthcheck:
@@ -344,7 +400,7 @@ services:
       - BYPASS_AUTH_TOKEN_VERIFICATION=${BLENDER_BYPASS_AUTH_TOKEN_VERIFICATION:-0}
       - DISABLE_JSON_LOGGING=${BLENDER_DISABLE_JSON_LOGGING:-0}
       - ENABLE_CONFORMANCE_MONITORING=${BLENDER_ENABLE_CONFORMANCE_MONITORING:-1}
-      - USSP_NETWORK_ENABLED=${BLENDER_USSP_NETWORK_ENABLED:-1}
+      - USSP_NETWORK_ENABLED=${BLENDER_USSP_NETWORK_ENABLED:-0}
       - DSS_BASE_URL=http://local-dss-core:8082/
       - DSS_AUTH_URL=http://local-dss-dummy-oauth:8085
       - DSS_AUTH_TOKEN_ENDPOINT=/token
@@ -371,10 +427,6 @@ services:
         condition: service_started
       db-blender:
         condition: service_started
-      local-dss-core:
-        condition: service_healthy
-      local-dss-dummy-oauth:
-        condition: service_healthy
     networks:
       - interop_ecosystem_network
 
@@ -399,7 +451,7 @@ services:
       - OIDC_SIGNING_PRIVATE_KEY_PEM=${BLENDER_OIDC_SIGNING_PRIVATE_KEY_PEM:-}
       - IS_DEBUG=${BLENDER_IS_DEBUG:-0}
       - BYPASS_AUTH_TOKEN_VERIFICATION=${BLENDER_BYPASS_AUTH_TOKEN_VERIFICATION:-0}
-      - USSP_NETWORK_ENABLED=${BLENDER_USSP_NETWORK_ENABLED:-1}
+      - USSP_NETWORK_ENABLED=${BLENDER_USSP_NETWORK_ENABLED:-0}
       - DSS_BASE_URL=http://local-dss-core:8082/
       - DSS_AUTH_URL=http://local-dss-dummy-oauth:8085
       - DSS_AUTH_TOKEN_ENDPOINT=/token
@@ -419,22 +471,28 @@ services:
       - redis-blender
       - db-blender
       - flight-blender
-      - local-dss-core
-      - local-dss-dummy-oauth
     networks:
       - interop_ecosystem_network
 
   mock-uss:
     image: python:3.11-slim
     container_name: mock-uss
-    command: ["python", "/app/mock_uss.py"]
+    profiles: ["dss"]
     environment:
+      ATC_ENV: ${ATC_ENV:-development}
       DSS_BASE_URL: http://local-dss-core:8082/
       DSS_AUTH_URL: http://local-dss-dummy-oauth:8085/token
       DSS_SELF_AUDIENCE: localhost
       MOCK_USS_BASE_URL: http://mock-uss:9100
       MOCK_USS_PORT: 9100
       ISA_DURATION_SEC: 21600
+    entrypoint: ["/bin/sh", "-lc"]
+    command: |
+      if [ "${ATC_ENV:-development}" = "production" ]; then
+        echo "[DSS] Refusing to start mock-uss when ATC_ENV=production" >&2
+        exit 1
+      fi
+      exec python /app/mock_uss.py
     volumes:
       - ./mock-uss/mock_uss.py:/app/mock_uss.py:ro
     depends_on:
