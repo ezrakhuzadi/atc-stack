@@ -347,11 +347,19 @@ F-DRONE-013 — **P0 / Security (FIXED)**: Fail closed on placeholder/shared-sec
   - Boot server with `ATC_ENV=production` and placeholder tokens → process exits with a clear error.
   - Boot server with `ATC_ENV=production`, `ATC_REQUIRE_WS_TOKEN=true`, but no `ATC_WS_TOKEN` → process exits with a clear error.
 
-F-DRONE-014 — **P1 / Reliability + Safety**: Disabling command ACK timeouts can create “never-clearing” command queues
-- Where: `atc-drone/crates/atc-server/src/state/store.rs` (`command_waiting_for_ack` treats `ack_timeout<=0` as “wait forever”), `atc-drone/crates/atc-server/src/persistence/commands.rs` (`delete_stale_commands` no-ops when `ack_timeout_secs<=0`)
+F-DRONE-014 — **P1 / Reliability + Safety (FIXED)**: Disabling command ACK timeouts can create “never-clearing” command queues
+- Where:
+  - `atc-drone/crates/atc-server/src/main.rs` (production config validation)
+  - `atc-drone/crates/atc-server/src/state/store.rs` (`enqueue_command` now enforces expiry + queue caps)
+  - `atc-drone/crates/atc-server/src/persistence/commands.rs` (`delete_stale_commands` still no-ops when `ack_timeout_secs<=0`, but commands now always have an `expires_at`)
 - Why it matters: unacked commands can accumulate indefinitely (especially commands with `expires_at=NULL`), causing stuck drones and memory/DB growth.
-- Fix: enforce `ATC_COMMAND_ACK_TIMEOUT_SECS > 0` in production; also ensure every command has an explicit expiry and a max queue length per drone.
-- Verify: integration test that a non-acking drone cannot accumulate >N commands and that stale commands are purged deterministically.
+- Fix (implemented):
+  - Server now rejects `ATC_COMMAND_ACK_TIMEOUT_SECS <= 0` when `ATC_ENV` is not development.
+  - `enqueue_command` now assigns a default `expires_at` when missing (and adds an ACK-timeout buffer for HOLD commands) so commands are never “immortal”.
+  - Added a per-drone pending-command queue cap via `ATC_MAX_PENDING_COMMANDS_PER_DRONE` (default 100); new commands are rejected once the cap is hit.
+  - Added regression tests verifying default expiry assignment and queue-cap enforcement.
+- Verify:
+  - `cargo test -p atc-server` (includes `state::store` command expiry/cap tests).
 
 F-DRONE-015 — **P1 / Security + DoS (FIXED)**: `/v1/geofences/check-route` was public and accepted unbounded waypoint arrays
 - Where: `atc-drone/crates/atc-server/src/api/routes.rs`, `atc-drone/crates/atc-server/src/api/geofences.rs` (`check_route`)
