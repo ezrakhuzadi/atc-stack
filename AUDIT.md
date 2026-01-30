@@ -1057,21 +1057,21 @@ F-BLENDER-014 — **P1 / Correctness + Scalability**: File-backed RTree indexes 
 - Verify:
   - Parallel test harness running two index builds in different threads/processes yields correct, isolated intersections.
 
-F-BLENDER-015 — **P1 / Security**: Signed-telemetry public key URLs are fetched without SSRF protections or timeouts
+F-BLENDER-015 — **P1 / Security (FIXED)**: Signed-telemetry public key URLs are fetched without SSRF protections or timeouts
 - Where:
   - `atc-blender/flight_feed_operations/pki_helper.py:147`–`161` (`s.get(current_public_key.url)` with no timeout, no allowlist, no scheme/IP filtering)
   - Public key management endpoints are exposed via DRF:
     - `atc-blender/flight_feed_operations/views.py:579`–`588` (`SignedTelmetryPublicKeyList/Detail`)
     - `atc-blender/flight_feed_operations/urls.py:11`–`15`
 - Why it matters: a token-holder (or compromised admin path) can register a key URL like `http://169.254.169.254/...` and cause the service to fetch internal resources (SSRF) or hang worker threads (no timeout), potentially impacting availability of RID/USS endpoints.
-- Fix:
-  - Add strict URL validation: allow `https` only, block localhost/private/link-local IP ranges, and prefer a domain allowlist.
-  - Add a hard request timeout and response size limit; handle non-200/invalid JSON safely.
-  - Consider storing public keys directly (or fetching out-of-band into a vetted store) rather than fetching arbitrary URLs at request time.
-  - Re-evaluate auth scope `"geo-awareness.test"` for key management; restrict to dedicated admin scopes.
+- Status:
+  - **DONE**: added shared safe JSON downloader (SSRF guard + redirect validation + timeouts + size limit).
+  - **DONE**: updated signed-telemetry JWKS fetch path to use the safe downloader.
+- Fix (implemented):
+  - Added `atc-blender/common/http_download.py` and wired it into `MessageVerifier.get_public_keys`.
+  - Enforces `https` by default (allows `http` only when `IS_DEBUG=1`), blocks localhost/private/link-local, validates redirects, and caps download size.
 - Verify:
-  - Security test: key URL pointing to `http://127.0.0.1/` is rejected; verification path never performs the fetch.
-  - Reliability test: an unresponsive key URL cannot stall request handling beyond the configured timeout.
+  - Unit test: `atc-blender/tests/test_http_download.py`.
 
 F-BLENDER-016 — **P1 / Security + Correctness (FIXED)**: Key material is conflated (`SECRET_KEY` used as Django secret *and* treated as an RSA private key for JOSE/JWKS)
 - Where:
