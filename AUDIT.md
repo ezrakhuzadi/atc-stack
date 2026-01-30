@@ -523,11 +523,11 @@ F-DRONE-032 — **P2 / Launch readiness**: Integration tests exist but are not r
 - “Default users” / guest login now fails closed in production: close **F-FRONTEND-005**.
 - WebSocket Origin hardening (CSWSH) should be explicit.
 - Login throttling / brute force defense.
-- CSP currently allows `style-src 'unsafe-inline'` (and inline script attributes); weakens XSS posture.
+- CSP still allows `style-src 'unsafe-inline'` (planner also allows `script-src 'unsafe-inline'`); inline script attributes have been removed.
 
 **Detailed findings (write-as-we-go; do not delete)**
 
-F-FRONTEND-001 — **P0 / Security**: XSS surface via `innerHTML` + inline `onclick` with untrusted IDs (drone IDs, statuses, etc.)
+F-FRONTEND-001 — **P0 / Security (FIXED)**: XSS surface via `innerHTML` + inline `onclick` with untrusted IDs (drone IDs, statuses, etc.)
 - Where:
   - `atc-frontend/static/js/fleet.js:160`–`190` (`contentEl.innerHTML` uses `${droneId}` inside `onclick="Fleet.holdDrone('${droneId}')"` / `resumeDrone`)
   - `atc-frontend/static/js/missions.js:239`–`264` (builds HTML strings with `onclick="window.location.href='${detailsHref}'"` etc)
@@ -538,11 +538,15 @@ F-FRONTEND-001 — **P0 / Security**: XSS surface via `innerHTML` + inline `oncl
   - Eliminate inline `onclick=` handlers; attach handlers with `addEventListener` and keep data in `data-*` attributes only.
   - When dynamic HTML is necessary, use safe DOM APIs (`textContent`) or sanitize strictly; default to escaping (`escapeHtml`) for any user/remote-controlled values.
   - Treat **drone_id**, **mission ids**, and any **string fields from backend** as untrusted.
+- Status:
+  - **DONE**: removed inline `onclick=` and replaced with `addEventListener` and safe links:
+    - `atc-frontend/static/js/fleet.js`
+    - `atc-frontend/static/js/missions.js`
 - Verify:
   - Add an end-to-end security test that registers a drone with an ID containing quotes/HTML and asserts no script execution (Cypress/Playwright).
   - Add a lint rule or grep gate in CI forbidding `onclick="` and requiring escaping for `innerHTML` templating.
 
-F-FRONTEND-002 — **P0 / Security**: CSP weakens XSS defense (`script-src-attr 'unsafe-inline'`, `style-src 'unsafe-inline'`), and `JSON.stringify` is injected into a `<script>` context unsafely
+F-FRONTEND-002 — **P0 / Security (PARTIALLY FIXED)**: CSP weakens XSS defense (`script-src-attr 'unsafe-inline'`, `style-src 'unsafe-inline'`), and `JSON.stringify` is injected into a `<script>` context unsafely
 - Where:
   - `atc-frontend/server.js:371`–`425` (CSP header; includes `script-src-attr 'unsafe-inline'` and `style-src 'unsafe-inline'`; planner assets additionally allow `'unsafe-inline' 'unsafe-eval'` scripts).
   - `atc-frontend/views/layouts/main.ejs:43`–`57` (`window.APP_USER = <%- JSON.stringify(user || null) %>;` etc)
@@ -551,12 +555,17 @@ F-FRONTEND-002 — **P0 / Security**: CSP weakens XSS defense (`script-src-attr 
   - Unescaped `JSON.stringify(...)` inside a `<script>` tag can be broken with `</script>` sequences if any embedded values are attacker-controlled (signup name/email/ID). With `script-src-attr 'unsafe-inline'`, breaking out of the `<script>` tag can still yield executable inline handlers.
 - Fix:
   - Remove `script-src-attr 'unsafe-inline'` and refactor inline handlers into JS (`addEventListener`).
-  - Remove `style-src 'unsafe-inline'` by moving inline styles to CSS or using hashed styles if unavoidable.
   - Replace `JSON.stringify` templating with a safe serializer for `<script>` context (escape `<` as `\\u003c`, `</script` defenses). Common options: `serialize-javascript` or a small local helper.
+  - Remove `style-src 'unsafe-inline'` by moving inline styles to CSS or using hashed styles if unavoidable.
   - Keep the “planner” CSP exception tightly scoped; consider migrating planner to nonce-based scripts instead of `unsafe-inline`.
+- Status:
+  - **DONE**: removed `script-src-attr 'unsafe-inline'` from CSP and eliminated inline event handlers across the UI.
+  - **DONE**: replaced raw `<%- JSON.stringify(...) %>` in `views/layouts/main.ejs` with `safeJson(...)` (server-side helper that escapes `<` etc for `<script>` context).
+  - **TODO**: remove `style-src 'unsafe-inline'` (requires removing inline `style="..."` usage and nonced inline `<style>` tags where needed).
 - Verify:
   - Add a CSP regression test in CI that checks response headers for the expected policy (no `unsafe-inline` attributes).
   - Add a unit test that renders `layouts/main.ejs` with a name containing `</script>` and asserts output is still a single script block (or escapes).
+  - Added lightweight grep gate script: `atc-frontend/tools/security-smoke.js` (run in CI/container via Node).
 
 F-FRONTEND-003 — **P1 / Security**: Logout is a GET (CSRF-able) + login does not regenerate the session (session fixation class)
 - Where:
@@ -732,7 +741,7 @@ F-FRONTEND-015 — **P1 / Product (User-facing bug)**: Removing a stop (or clear
   - UI test: create A→…→S, click remove on S, assert other waypoints remain and map markers update correctly.
   - UI test: clear Start value, assert only Start cleared (or defined expected behavior), without deleting other stops.
 
-F-FRONTEND-016 — **P0 / Security**: Reflected XSS via unescaped route param interpolation into HTML attributes (`missionId`)
+F-FRONTEND-016 — **P0 / Security (FIXED)**: Reflected XSS via unescaped route param interpolation into HTML attributes (`missionId`)
 - Where:
   - `atc-frontend/views/mission-detail.ejs:13` (`data-mission-id="${missionId}"` inside a JS template literal passed as `body`)
 - Why it matters: `missionId` comes from the URL path (`/control/missions/:id`) and is inserted into an HTML attribute without escaping. A crafted URL can break out of the attribute and execute script in the victim’s browser (logged-in operator/authority), giving full same-origin access to the console and its proxies.
@@ -740,10 +749,12 @@ F-FRONTEND-016 — **P0 / Security**: Reflected XSS via unescaped route param in
   - Stop building page markup as JS template literals with `${...}` interpolation for untrusted values.
   - Preferred: convert `mission-detail.ejs` to a normal EJS template body (no `body: \`...\``), and render `missionId` with `<%= %>` escaping.
   - Minimal: HTML-escape `missionId` before interpolation (must escape at least `& < > " '`), and avoid inserting it into raw HTML attributes if possible (pass via a JSON script tag with safe serialization instead).
+- Status:
+  - **DONE**: HTML-escape `missionId` on the server before interpolating into `data-mission-id` in `atc-frontend/views/mission-detail.ejs`.
 - Verify:
   - E2E test: visit `/control/missions/%22%20onmouseover%3Dalert(1)%20x%3D%22` and assert no JS executes and the page renders safely.
 
-F-FRONTEND-017 — **P0 / Security**: Planner XSS via unescaped `innerHTML` from untrusted sources (drone IDs + geocoder results)
+F-FRONTEND-017 — **P0 / Security (FIXED)**: Planner XSS via unescaped `innerHTML` from untrusted sources (drone IDs + geocoder results)
 - Where:
   - `atc-frontend/static/planner/index.html:1489`–`1501` (`droneSelect.innerHTML = options.join('')` with `${id}` and `${status}` unescaped)
   - `atc-frontend/static/planner/index.html:1600`–`1632` (`showAutocomplete` injects `r.displayName` into `.place-name`/`.place-address` via `innerHTML` without escaping)
@@ -755,6 +766,10 @@ F-FRONTEND-017 — **P0 / Security**: Planner XSS via unescaped `innerHTML` from
   - Replace `innerHTML` construction with DOM creation (`document.createElement('option')`, `.value = …`, `.textContent = …`).
   - In autocomplete, set `.textContent` for name/address (never interpolate into HTML); keep the full result object in a JS-side map keyed by an integer index rather than `dataset.results = JSON.stringify(...)`.
   - Add a “dangerous string” test harness: treat any `"<>&'` in IDs/display names as hostile and ensure it renders as text.
+- Status:
+  - **DONE**: `droneSelect` now uses DOM option creation (no `innerHTML`) and previous selection restoration avoids `querySelector` injection.
+  - **DONE**: autocomplete dropdown now uses DOM nodes + `textContent` and stores result objects in a `WeakMap` instead of `dataset.results`.
+  - **DONE**: removed inline `onclick=` usage from planner UI elements (now uses `addEventListener`).
 - Verify:
   - Register a drone with ID like `bad\"><img src=x onerror=alert(1)>` and confirm opening the planner does not execute JS and the dropdown renders escaped text.
   - Mock the geocoder result `displayName` to include `</div><img …>` and confirm it renders as text.
