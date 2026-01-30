@@ -496,13 +496,14 @@ F-DRONE-027 — **P0 / Safety + Reliability (FIXED)**: “last_update” uses un
   - Unit test `stale_telemetry_timestamp_does_not_trigger_timeout` (in `atc-drone/crates/atc-server/src/api/tests.rs`) ensures stale telemetry timestamps do not immediately mark a drone LOST.
   - Recommended follow-up: surface clock drift in status (requires tracking `source_timestamp` separately).
 
-F-DRONE-028 — **P1 / Safety**: External RID tracks “fail open” on timestamp parse (stale tracks can look fresh)
-- Where: `atc-drone/crates/atc-server/src/loops/rid_sync_loop.rs` (`parse_timestamp(...).unwrap_or_else(Utc::now)`)
+F-DRONE-028 — **P1 / Safety (FIXED)**: External RID tracks “fail open” on timestamp parse (stale tracks can look fresh)
+- Where: `atc-drone/crates/atc-server/src/loops/rid_sync_loop.rs` (RID observations without a valid timestamp are dropped)
 - Why it matters: if Blender/DSS sends malformed timestamps (or schema shifts), tracks are assigned `last_update = now`, so they can persist and be fed into conflict detection as “fresh” even when they’re not. This can create false conflicts and unnecessary evasive commands.
-- Fix: treat unparseable timestamps as degraded quality:
-  - Prefer using server receipt time but mark track as `timestamp_valid=false`, and/or drop tracks missing timestamps depending on safety policy.
-  - Add metrics/logging for parse failure rate; if it spikes, disable external tracks rather than poisoning conflict detection.
-- Verify: unit test with malformed timestamps should not extend track TTL silently; integration test should show advisory/degraded external-traffic state.
+- Fix (implemented):
+  - RID observations now require a parseable timestamp; otherwise they are dropped (fail closed) instead of being assigned `Utc::now()`.
+  - Added a regression unit test that invalid timestamps are rejected.
+- Verify:
+  - Unit test `normalize_observation_rejects_invalid_timestamp` (in `atc-drone/crates/atc-server/src/loops/rid_sync_loop.rs`) passes.
 
 F-DRONE-029 — **P1 / Product correctness + Safety**: Blender flight declarations are imported without ATC validation and with weak input checks
 - Where: `atc-drone/crates/atc-server/src/loops/flight_declaration_sync_loop.rs`
