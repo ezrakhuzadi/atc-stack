@@ -449,10 +449,10 @@ F-DRONE-026 — **P1 / Safety + Reliability**: Active HOLD state is in-memory on
 - Fix: persist HOLD state (e.g., `holds(drone_id, hold_until)`), or reconstruct it on startup by querying the latest acknowledged HOLD per drone and computing `hold_until` from `acked_at` + duration (capped by `expires_at`).
 - Verify: integration test: issue HOLD → ack → restart → verify the drone remains “holding” until expiry and that command issuance respects the hold.
 
-F-DRONE-027 — **P0 / Safety + Reliability**: “last_update” uses untrusted telemetry timestamps (time semantics are wrong system-wide)
+F-DRONE-027 — **P0 / Safety + Reliability (FIXED)**: “last_update” uses untrusted telemetry timestamps (time semantics are wrong system-wide)
 - Where:
-  - Model: `atc-drone/crates/atc-core/src/models.rs` (`DroneState.last_update = telemetry.timestamp`)
-  - Ingest: `atc-drone/crates/atc-server/src/state/store.rs` (`update_telemetry` sets `DroneState.last_update = telemetry.timestamp`)
+  - Model: `atc-drone/crates/atc-core/src/models.rs` (`DroneState::update(..., received_at)` / `from_telemetry(..., received_at)`)
+  - Ingest: `atc-drone/crates/atc-server/src/state/store.rs` (`update_telemetry` uses `received_at = Utc::now()` and passes it into the DroneState update)
   - Timeouts: `atc-drone/crates/atc-server/src/state/store.rs` (`check_timeouts` uses `now - drone.last_update`)
   - External sync: `atc-drone/crates/atc-server/src/loops/blender_sync_loop.rs` (uses `last_update` to decide what changed)
 - Why it matters: a drone clock can drift, be wrong, or be attacker-controlled. Using `telemetry.timestamp` as the authoritative “freshness” clock can:
@@ -464,7 +464,9 @@ F-DRONE-027 — **P0 / Safety + Reliability**: “last_update” uses untrusted 
   - `received_at` (server receipt time) — authoritative for timeouts/health/sync throttling
   - `source_timestamp` (drone-provided) — informational; used for drift detection and maybe kinematics if trustworthy
   - Stop mutating timestamps (ties to F-DRONE-005), and add explicit clock-drift handling.
-- Verify: tests that send telemetry with stale/future `source_timestamp` but normal `received_at`; LOST logic + Blender sync should still behave correctly and surface clock-drift in status.
+- Verify:
+  - Unit test `stale_telemetry_timestamp_does_not_trigger_timeout` (in `atc-drone/crates/atc-server/src/api/tests.rs`) ensures stale telemetry timestamps do not immediately mark a drone LOST.
+  - Recommended follow-up: surface clock drift in status (requires tracking `source_timestamp` separately).
 
 F-DRONE-028 — **P1 / Safety**: External RID tracks “fail open” on timestamp parse (stale tracks can look fresh)
 - Where: `atc-drone/crates/atc-server/src/loops/rid_sync_loop.rs` (`parse_timestamp(...).unwrap_or_else(Utc::now)`)
