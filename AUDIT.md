@@ -368,13 +368,14 @@ F-DRONE-017 — **P1 / Reliability + Security**: SDK client uses no network time
 - Fix: add timeouts (connect + overall) and retry policy; require HTTPS unless an explicit `dev_allow_insecure_http` flag is set.
 - Verify: unit tests for URL validation; integration tests for timeout behavior against a blackhole endpoint.
 
-F-DRONE-018 — **P0 / Safety**: Conflict loop can issue a reroute that was *not* validated against obstacles/geofences
-- Where: `atc-drone/crates/atc-server/src/loops/conflict_loop.rs` (`plan_airborne_route(...).await` then `unwrap_or_else(generate_avoidance_route)`)
+F-DRONE-018 — **P0 / Safety (FIXED)**: Conflict loop can issue a reroute that was *not* validated against obstacles/geofences
+- Where: `atc-drone/crates/atc-server/src/loops/conflict_loop.rs` (now: `match plan_airborne_route(...).await { Some => REROUTE, None => HOLD }`)
 - Why it matters: if route planning fails (terrain/obstacle fetch failure, algorithm failure, etc.), the fallback still issues a REROUTE based on simple offsets that can violate geofences/obstacles and create secondary conflicts.
-- Fix: change fallback behavior:
-  - If route planning fails, default to `HOLD` (failsafe) unless a validated reroute can be produced.
-  - If you keep a “simple avoidance” fallback, it must be validated by the same safety checks (geofence intersection, obstacle clearance, conflict check) before issuing.
-- Verify: forced-failure test (break terrain/overpass) should not issue an unsafe reroute; instead it should HOLD and raise an advisory explaining degraded planning.
+- Fix (implemented): fail closed on planner failure:
+  - If route planning fails, default to `HOLD` (failsafe) rather than generating an unvalidated “simple avoidance” reroute.
+- Verify:
+  - Manual code review confirms the planner result is now matched (no fallback reroute).
+  - Recommended follow-up: forced-failure integration test (break terrain/overpass) should not issue an unsafe reroute; instead it should HOLD and raise an advisory explaining degraded planning.
 
 F-DRONE-019 — **P1 / Safety**: Conformance “exit geofence” reroute is not validated
 - Where: `atc-drone/crates/atc-server/src/loops/conformance_loop.rs` (builds `CommandType::Reroute { waypoints: vec![exit_waypoint] }`)
