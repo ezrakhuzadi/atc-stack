@@ -577,20 +577,20 @@ F-FRONTEND-002 — **P0 / Security (FIXED)**: CSP weakens XSS defense (`script-s
   - Add a unit test that renders `layouts/main.ejs` with a name containing `</script>` and asserts output is still a single script block (or escapes).
   - Added lightweight grep gate script: `atc-frontend/tools/security-smoke.js` (run in CI/container via Node).
 
-F-FRONTEND-003 — **P1 / Security**: Logout is a GET (CSRF-able) + login does not regenerate the session (session fixation class)
+F-FRONTEND-003 — **P1 / Security (FIXED)**: Logout is a GET (CSRF-able) + login does not regenerate the session (session fixation class)
 - Where:
-  - `atc-frontend/views/partials/header.ejs:52` (logout link is GET `/logout`)
-  - `atc-frontend/server.js:694`–`702` (logout route is `app.get('/logout', ...)`, not CSRF-protected)
-  - `atc-frontend/server.js:581`–`595` (login sets `req.session.user = ...` without `req.session.regenerate(...)`)
+  - `atc-frontend/views/partials/header.ejs` (logout is now a POST form with CSRF token)
+  - `atc-frontend/server.js` (logout is now `POST /logout`; `GET /logout` returns 405)
+  - `atc-frontend/server.js` (login/signup/guest login regenerate the session before setting `req.session.user`)
 - Why it matters:
   - Logout-by-GET can be triggered cross-site (nuisance attack) and violates typical CSRF posture.
   - Without session regeneration on login, a session fixation attack is possible in some deployment setups (especially if cookies can be set/forced through other bugs).
 - Fix:
-  - Make logout a POST with CSRF token and remove the GET endpoint (or keep GET but require confirmation + CSRF-protected POST).
-  - Call `req.session.regenerate` (or create a new session) on successful login before setting `req.session.user`.
+  - Make logout a POST with CSRF token and disallow logout-by-GET.
+  - Call `req.session.regenerate` on successful login/signup/guest login before setting `req.session.user`.
 - Verify:
-  - Add a test that GET `/logout` returns 405/404.
-  - Add a test that session ID changes across login.
+  - Manual: GET `/logout` returns 405; POST `/logout` requires CSRF.
+  - Manual: session ID changes across login (new session created on login).
 
 F-FRONTEND-004 — **P1 / Security**: No brute-force protection on login / signup
 - Where:
