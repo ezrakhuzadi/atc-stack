@@ -799,17 +799,19 @@ F-FRONTEND-017 — **P0 / Security (FIXED)**: Planner XSS via unescaped `innerHT
 
 **Detailed findings (write-as-we-go; do not delete)**
 
-F-BLENDER-001 — **P0 / Correctness + Safety**: Surveillance track generation flips longitude sign (and mixes altitude units)
+F-BLENDER-001 — **P0 / Correctness + Safety (FIXED)**: Surveillance track generation flips longitude sign (and mixes altitude units)
 - Where:
   - `atc-blender/surveillance_monitoring_operations/utils.py:96`–`116` (`lng=-latest_observation.lon_dd`; `AircraftPosition.alt=latest_observation.altitude_mm`)
   - Data model: `atc-blender/surveillance_monitoring_operations/data_definitions.py:98`–`105` documents `lat/lng` in degrees and `alt` in meters.
 - Why it matters: negating longitude mirrors tracks across the prime meridian; the system can display/compute positions in the wrong place. Altitude appears to be passed as **mm** in some places where consumers expect **meters**, causing 1000× errors.
 - Fix:
   - Remove longitude negation: use `lng=latest_observation.lon_dd`.
-  - Normalize altitude consistently: if inputs are `altitude_mm`, convert to meters at output boundaries (or rename fields to eliminate ambiguity).
+  - Normalize altitude consistently: treat `altitude_mm` as **millimeters** and convert to meters for emitted track output (`LatLangAltPoint.alt`, `AircraftPosition.alt`, `pressure_altitude`).
+  - Ensure timestamps flow through to track generation; if timestamps are missing or non-increasing, fall back to `delta_time_secs=1.0` so track fusion does not crash.
   - Add unit tests for a known point in the western hemisphere (lon < 0 stays < 0), and for altitude conversion (1000mm → 1.0m).
 - Verify:
   - Regression test feeding a sample observation `(lat=33.6846, lon=-117.8265, alt_mm=10000)` and asserting emitted track uses `lon=-117.8265` and altitude in meters.
+  - Unit test: `atc-blender/tests/test_surveillance_tracks.py`
 
 F-BLENDER-002 — **P1 / Security + Availability (PARTIALLY FIXED)**: Auth middleware fetches JWKS on every request and does not validate issuer
 - Where:
@@ -935,16 +937,15 @@ F-BLENDER-011 — **P2 / Reproducibility + Ops**: Runtime images use mutable tag
 - Verify:
   - Rebuilding the stack from scratch on a clean machine produces the same container versions and behavior.
 
-F-BLENDER-012 — **P1 / Correctness**: Speed calculation can divide by zero (and mixes altitude units in track messages)
+F-BLENDER-012 — **P1 / Correctness (FIXED)**: Speed calculation can divide by zero (duplicate / out-of-order timestamps)
 - Where:
   - `atc-blender/surveillance_monitoring_operations/utils.py:30`–`47` (`speed_mts_per_sec = distance / delta_time_secs` without guarding `delta_time_secs <= 0`)
-  - Unit mismatch already covered in F-BLENDER-001 (`AircraftPosition.alt` uses `altitude_mm` while other fields convert to meters)
 - Why it matters: duplicate timestamps or out-of-order observations can make `delta_time_secs` zero/negative → crash or `inf` speed, producing invalid RID output and breaking downstream consumers.
 - Fix:
-  - Clamp `delta_time_secs` to a minimum epsilon or treat non-positive deltas as “no movement” (speed=0, bearing unchanged/0).
-  - Normalize altitude units at boundaries (pick meters everywhere or rename + convert consistently).
+  - Treat non-positive deltas as “no movement” (`speed=0`, `vertical_speed=0`) so track fusion does not crash or emit `inf`.
 - Verify:
   - Unit test with two observations sharing the same timestamp does not crash and yields finite outputs.
+  - Unit test: `atc-blender/tests/test_surveillance_tracks.py` (`test_duplicate_timestamps_do_not_crash`)
 
 F-BLENDER-013 — **P1 / Correctness + Reliability**: GeoFence RTree index clearing is inconsistent (stale entries / wrong intersections)
 - Where:
