@@ -141,7 +141,7 @@ services:
       - OVERPASS_STOP_AFTER_INIT=false
       - OVERPASS_PLANET_PREPROCESS=rm -f /db/planet.osm.bz2 /db/planet.osm.pbf && cp /osm/${ATC_OSM_PBF:-us-latest.osm.pbf} /db/planet.osm.pbf && osmium cat -o /db/planet.osm.bz2 /db/planet.osm.pbf && rm /db/planet.osm.pbf
     volumes:
-      - ${ATC_OVERPASS_DB_DIR:-./data/overpass-us}:/db
+      - ${ATC_OVERPASS_DB_DIR:-./data/overpass}:/db
       - ${ATC_OSM_DIR:-./data/osm}:/osm:ro
     ports:
       - "8086:80"

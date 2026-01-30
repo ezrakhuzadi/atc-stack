@@ -4,7 +4,7 @@ set -euo pipefail
 DATA_ROOT="${ATC_DATA_ROOT:-/mnt/atc-data}"
 OSM_DIR="${ATC_OSM_DIR:-$DATA_ROOT/osm}"
 OSM_PBF="${ATC_OSM_PBF:-us-latest.osm.pbf}"
-DB_DIR="${ATC_OVERPASS_DB_DIR:-$DATA_ROOT/overpass-us}"
+DB_DIR="${ATC_OVERPASS_DB_DIR:-$DATA_ROOT/overpass}"
 
 IMAGE="${OVERPASS_IMAGE:-wiktorn/overpass-api:latest}"
 
@@ -29,4 +29,3 @@ docker run --rm \
   "$IMAGE"
 
 echo "[overpass] init complete"
-

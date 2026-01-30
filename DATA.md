@@ -24,7 +24,7 @@ Notes:
 - `ATC_OSM_PBF` (e.g., `us-latest.osm.pbf`)
 - `ATC_OSM_DIR` (e.g., `/mnt/atc-data/osm`)
 - `ATC_TERRAIN_DIR` (e.g., `/mnt/atc-data/terrain/copernicus`)
-- `ATC_OVERPASS_DB_DIR` (e.g., `/mnt/atc-data/overpass-us`)
+- `ATC_OVERPASS_DB_DIR` (e.g., `/mnt/atc-data/overpass`)
 
 You can override these via environment variables, e.g.:
 

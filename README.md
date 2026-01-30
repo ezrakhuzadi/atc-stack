@@ -33,7 +33,7 @@ Edit `.env` and replace all `change-me-*` values.
 
 This stack expects host data directories at:
 - `./data/osm` (contains your `.osm.pbf`, default `us-latest.osm.pbf`)
-- `./data/overpass-us` (Overpass DB directory)
+- `./data/overpass` (Overpass DB directory)
 - `./data/terrain/copernicus` (Copernicus DEM tiles)
 
 `data/` is ignored by git.
