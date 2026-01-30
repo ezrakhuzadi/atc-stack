@@ -927,19 +927,18 @@ F-BLENDER-004 — **P1 / Correctness + Security**: Assertions used for request v
 - Verify:
   - Run the service with Python optimizations and ensure behavior is unchanged (validation still enforced).
 
-F-BLENDER-005 — **P1 / Performance + Reliability**: Redis `KEYS` is used for track enumeration and one path returns malformed `ActiveTrack.observations`
+F-BLENDER-005 — **P1 / Performance + Reliability (FIXED)**: Redis `KEYS` is used for track enumeration and one path returns malformed `ActiveTrack.observations`
 - Where:
   - `atc-blender/common/redis_stream_operations.py:247`–`269` (`self.redis.keys(pattern)`)
   - `atc-blender/common/redis_stream_operations.py:261`–`266` stores `observations` as a raw string rather than a list (in `get_all_active_tracks_in_session`)
 - Why it matters:
   - `KEYS` is O(N) and can block Redis under load.
   - Returning observations as a string can crash downstream code expecting `list[dict]`, causing intermittent runtime errors.
-- Fix:
-  - Replace `KEYS` with `SCAN` (cursor-based) or maintain an index set of track keys per session.
-  - Parse observations as JSON consistently (same as `get_active_track`).
+- Fix (implemented):
+  - `get_all_active_tracks_in_session` now uses Redis `SCAN` (via `scan_iter`) when available instead of `KEYS`.
+  - `ActiveTrack.observations` is now parsed the same way as `get_active_track` (JSON with `ast.literal_eval` fallback), and is always a list.
 - Verify:
-  - Load test with many tracks demonstrating Redis latency remains stable.
-  - Unit test that `get_all_active_tracks_in_session` returns `ActiveTrack.observations` as a list.
+  - Unit test: `atc-blender/tests/test_redis_stream_operations.py`.
 
 F-BLENDER-006 — **P0 / Ops Hazard (FIXED)**: Helper script can delete **all** Docker containers/volumes on the host
 - Where:
