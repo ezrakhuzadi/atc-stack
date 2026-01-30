@@ -570,16 +570,21 @@ F-DRONE-031 — **P1 / Safety (FIXED)**: Strategic deconfliction with trajectori
 - Verify:
   - `cargo test -p atc-core` (includes `timed_conflict_detects_conflict_between_samples`).
 
-F-DRONE-032 — **P2 / Launch readiness**: Integration tests exist but are not run in CI (and safety gates aren’t enforced)
+F-DRONE-032 — **P2 / Launch readiness (FIXED)**: Integration tests exist but are not run in CI (and safety gates aren’t enforced)
 - Where:
   - `atc-drone/crates/atc-server/tests/*` (many tests are `#[ignore]` and require a running server)
   - `atc-drone/.github/workflows/ci.yml` (`cargo test --all` only; no ignored tests; no `fmt`/`clippy`)
 - Why it matters: the repo has a lot of safety-critical behavior (conflict detection, command dispatch, geofence enforcement). If CI doesn’t run the “real” end-to-end tests, regressions will land silently and you won’t know until demo/deployment.
 - Fix:
-  - Add a CI job that spins up the stack (or at least `atc-server`) and runs the ignored integration tests.
-  - Add `cargo fmt --check` and `cargo clippy -- -D warnings` as gates.
-  - Treat key safety scenarios as non-ignored tests (or move them into a deterministic harness that CI can run).
-- Verify: CI fails when a known regression is introduced (e.g., CPA miss case, geofence intersection case); CI passes on clean main.
+  - CI now enforces baseline quality gates:
+    - `cargo fmt --all -- --check`
+    - `cargo clippy --all-targets --all-features -- -D warnings`
+    - `cargo test --all`
+  - CI now runs the previously-ignored end-to-end tests by starting `atc-server` during the workflow and executing:
+    - `cargo test -p atc-server --tests -- --ignored`
+  - Integration tests were updated to use `ATC_TEST_ADMIN_TOKEN` and `ATC_TEST_REGISTRATION_TOKEN` so they work with the hardened auth model.
+- Verify:
+  - GitHub Actions `atc-drone-ci` passes on a clean branch; intentionally breaking an ignored integration test causes CI to fail.
 
 ### 5.2 `atc-frontend` (Node UI + proxy)
 
