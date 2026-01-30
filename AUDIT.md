@@ -520,17 +520,22 @@ F-DRONE-028 — **P1 / Safety (FIXED)**: External RID tracks “fail open” on 
 - Verify:
   - Unit test `normalize_observation_rejects_invalid_timestamp` (in `atc-drone/crates/atc-server/src/loops/rid_sync_loop.rs`) passes.
 
-F-DRONE-029 — **P1 / Product correctness + Safety**: Blender flight declarations are imported without ATC validation and with weak input checks
-- Where: `atc-drone/crates/atc-server/src/loops/flight_declaration_sync_loop.rs`
+F-DRONE-029 — **P1 / Product correctness + Safety (FIXED)**: Blender flight declarations are imported without ATC validation and with weak input checks
+- Where:
+  - `atc-drone/crates/atc-server/src/loops/flight_declaration_sync_loop.rs` (import validation + timestamp parsing)
+  - `atc-drone/crates/atc-server/src/api/flights.rs` (external plans excluded from scheduling by default)
+  - `atc-drone/crates/atc-core/src/models.rs` (`FlightPlanMetadata.external_source`)
 - Why it matters:
-  - Imported waypoints are only checked for “finite” (not lat/lon range); malformed data can pollute DB and UI.
-  - Imported plans are persisted via `state.add_flight_plan`, which can cause scheduling side-effects (local strategic scheduling may be blocked by untrusted external plans).
-  - Departure/created timestamps fall back to `Utc::now()` if parsing fails, making old/invalid declarations appear current.
-- Fix:
-  - Validate coordinate ranges and minimum waypoint count before persisting.
-  - Treat imported declarations as a separate “external plans” collection/table (or mark them as external and exclude them from local scheduling decisions unless explicitly enabled).
-  - Do not default bad timestamps to “now” silently; either reject or mark as degraded.
-- Verify: tests for (a) out-of-range coords rejected, (b) bad timestamp doesn’t become “now”, (c) external declaration does not affect local scheduling unless enabled.
+  - Imported waypoints were only checked for “finite” (not lat/lon range); malformed data can pollute DB and UI.
+  - Imported plans were persisted via `state.add_flight_plan`, which can cause scheduling side-effects (local strategic scheduling may be blocked by untrusted external plans).
+  - Departure/created timestamps could fall back to `Utc::now()` if parsing failed, making old/invalid declarations appear current.
+- Fix (implemented):
+  - Blender declaration imports now validate waypoint count, lat/lon ranges, altitude finiteness, and apply the existing `route_planner_max_waypoints` cap before persisting.
+  - Timestamp parsing is more robust (supports common non-RFC3339 formats) and invalid/missing start times cause the declaration to be skipped (no silent “now” fallback).
+  - Imported plans are tagged as external via `metadata.external_source="blender"`.
+  - External plans are excluded from local strategic scheduling/conflict checks by default; enable with `ATC_INCLUDE_EXTERNAL_PLANS_IN_SCHEDULING=1`.
+- Verify:
+  - `cargo test -p atc-server` (covers invalid coords/time in declaration import and scheduling include/exclude behavior).
 
 F-DRONE-030 — **P1 / Security + Reliability (FIXED)**: Flight plan and compliance inputs lack hard size caps (CPU/DoS risk)
 - Where:
