@@ -382,11 +382,18 @@ F-DRONE-018 — **P0 / Safety (FIXED)**: Conflict loop can issue a reroute that 
   - Manual code review confirms the planner result is now matched (no fallback reroute).
   - Recommended follow-up: forced-failure integration test (break terrain/overpass) should not issue an unsafe reroute; instead it should HOLD and raise an advisory explaining degraded planning.
 
-F-DRONE-019 — **P1 / Safety**: Conformance “exit geofence” reroute is not validated
-- Where: `atc-drone/crates/atc-server/src/loops/conformance_loop.rs` (builds `CommandType::Reroute { waypoints: vec![exit_waypoint] }`)
+F-DRONE-019 — **P1 / Safety (FIXED)**: Conformance “exit geofence” reroute is not validated
+- Where:
+  - `atc-drone/crates/atc-server/src/loops/conformance_loop.rs` (plans a validated exit route or HOLD)
+  - `atc-drone/crates/atc-server/src/route_planner.rs` (supports ignoring the breached geofence during exit planning)
 - Why it matters: the “exit point” is computed geometrically and may route through other restricted areas or fail to actually clear the geofence depending on geometry/projection.
-- Fix: generate the exit as a *goal*, then use the route planner to compute a validated short path to the exit (or HOLD if planning fails).
-- Verify: add a test scenario with a concave geofence + nearby secondary geofence; conformance recovery must not command an unsafe path.
+- Fix (implemented):
+  - Generate the exit point as a goal, then use `plan_airborne_route` to compute a validated short path to the exit.
+  - Fail closed: if planning fails, issue a HOLD instead of an unvalidated reroute.
+  - Ignore the breached geofence during exit planning so a drone already inside can still plan its way out while avoiding *other* active geofences.
+- Verify:
+  - Manual: simulate a geofence breach near another geofence; conformance recovery should HOLD unless a valid exit route is found.
+  - Recommended follow-up: add a concave geofence + nearby secondary geofence scenario and assert we never command an unsafe “exit point only” reroute.
 
 F-DRONE-020 — **P0 / Safety + Compliance (FIXED)**: Route planner uses a single authoritative AGL ceiling (no hardcoded 500m)
 - Where: `atc-drone/crates/atc-server/src/route_planner.rs` (`RouteEngineConfig.faa_limit_agl` is derived from `state.rules().max_altitude_m`)
