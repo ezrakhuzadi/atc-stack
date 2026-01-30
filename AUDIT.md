@@ -1,6 +1,6 @@
 # ATC Stack — Consolidated Level 6 Engineering Audit (Canonical)
 
-Last updated: 2026-01-28 (local)
+Last updated: 2026-01-30 (local)
 
 This is the **single canonical** audit document for this workspace. Previous audit artifacts were consolidated into this file to eliminate “audit sprawl”.
 
@@ -306,11 +306,20 @@ F-DRONE-008 — **P1 / Security (FIXED)**: WebSocket token accepted via query pa
 - Verify:
   - Manual: WS upgrade with only `?token=...` is rejected; upgrade with `Authorization: Bearer ...` succeeds.
 
-F-DRONE-009 — **P1 / Security/Scale**: Drone token lookup is O(N) and tokens are stored in plaintext
-- Where: `atc-drone/crates/atc-server/src/state/store.rs` (`drone_tokens: DashMap<String,String>`, `drone_id_for_token` loops, `validate_drone_token` plaintext compare)
-- Why it matters: O(N) token lookup becomes a hot path (command WS auth); plaintext tokens increase blast radius if DB/logs leak.
-- Fix: store token hashes (e.g., Argon2id) and maintain a reverse index `token_hash -> drone_id`; compare in constant time; add rotation + revocation support.
-- Verify: benchmark auth under load; confirm tokens are never logged and DB stores only hashes.
+F-DRONE-009 — **P1 / Security/Scale (FIXED)**: Drone token lookup is O(N) and tokens are stored in plaintext
+- Where:
+  - `atc-drone/crates/atc-server/src/state/store.rs` (token auth + lookup)
+  - `atc-drone/crates/atc-server/migrations/002_drone_token_hash.sql` (DB column + index)
+  - `atc-drone/crates/atc-server/src/persistence/drone_tokens.rs` (hash upsert)
+- Why it matters: O(N) token lookup becomes a hot path (command fetch/WS auth), and plaintext tokens increase blast radius if the DB leaks.
+- Fix (implemented):
+  - Added `drone_tokens.session_token_hash` and indexed it.
+  - Server now stores **only token hashes** (SHA-256 hex) in memory + DB, and writes `session_token=''` to wipe plaintext.
+  - Added an O(1) reverse index `token_hash -> drone_id` and switched `drone_id_for_token()` to use it.
+  - On startup, if legacy rows still have a plaintext `session_token`, the server backfills `session_token_hash` and wipes `session_token`.
+- Verify:
+  - `cargo test -p atc-server` (includes token hash + backfill regression tests).
+  - DB spot check: `SELECT session_token, session_token_hash FROM drone_tokens;` should show empty `session_token` and populated `session_token_hash`.
 
 F-DRONE-010 — **P1 / Correctness (FIXED)**: Command IDs are truncated (collision risk)
 - Where: `atc-drone/crates/atc-server/src/api/commands.rs` (`CMD-` + first 8 chars of UUID)
