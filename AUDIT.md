@@ -1220,7 +1220,7 @@ F-DSS-006 — **P1 / Reliability + Maintainability**: DSS Compose config uses de
 - Verify:
   - Bumping DSS to a newer image tag does not require rework beyond updating the explicit pinned schema versions, and logs contain **no** “deprecated flag” warnings.
 
-F-DSS-007 — **P1 / Reproducibility**: The stack mixes DSS *runtime* artifacts (pinned upstream images) with *source* (submodule) in a way that can drift
+F-DSS-007 — **P1 / Reproducibility (FIXED)**: The stack mixes DSS *runtime* artifacts (pinned upstream images) with *source* (submodule) in a way that can drift
 - Where:
   - DSS core and schema bootstrap jobs use prebuilt images: `atc-stack/docker-compose.yml:220`–`277` (`image: interuss/dss:v0.15.0`)
   - Dummy OAuth is built from the local `interuss-dss` submodule: `atc-stack/docker-compose.yml:278`–`289` (`build: context: ./interuss-dss`)
@@ -1229,12 +1229,12 @@ F-DSS-007 — **P1 / Reproducibility**: The stack mixes DSS *runtime* artifacts 
   - You can end up with a dummy OAuth binary built from one DSS commit while the DSS core-service you actually run comes from a different published image (different behavior/flags/claims).
   - When someone reads this repo to audit the DSS code, they may be auditing source that is **not** what’s running in Compose.
 - Fix:
-  - Pick one of these and enforce it:
-    1) Build *all* DSS components from the submodule at a pinned commit (and stop using prebuilt `interuss/dss:*` images), or
-    2) Use prebuilt, version-matched images for **both** core-service and dummy-oauth (and treat the submodule as documentation/reference only), or
-    3) Vendor DSS as an external dependency entirely (remove from prod stack; only used in dev profiles).
-  - Document the chosen strategy and add a CI check that fails if DSS image tags drift from what the stack expects.
+  - Enforced a single version pin across both runtime images and source:
+    - `docker-compose.yml` now uses `interuss/dss:${DSS_IMAGE_TAG}` for all DSS runtime containers.
+    - The `interuss-dss` submodule is pinned to the matching upstream release tag (`interuss/dss/v${DSS_IMAGE_TAG#v}`) so building dummy OAuth uses the same DSS release as the runtime images.
+  - Added `tools/check_dss_pin.sh` which fails fast if the DSS image tag and submodule tag drift.
 - Verify:
+  - `./tools/check_dss_pin.sh` passes.
   - `docker compose config` shows a single, consistent DSS version strategy, and the stack boots cleanly after `git clone --recurse-submodules`.
 
 F-DSS-008 — **P1 / Ops + Data hygiene**: No DSS eviction/cleanup job is configured → expired RID/SCD entries can accumulate indefinitely
