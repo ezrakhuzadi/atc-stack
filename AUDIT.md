@@ -710,9 +710,9 @@ F-FRONTEND-009 — **P2 / Security**: Proxy allowlist checks do not canonicalize
   - Add tests with encoded path separators and dot segments to assert the proxy rejects them.
   - Add tests that operator accounts cannot issue commands to drones they do not own.
 
-F-FRONTEND-010 — **P1 / Product + Reliability**: Planner waypoint callbacks are duplicated / overwritten, contributing to brittle “waypoint state” bugs (including the reported “remove S clears all” incident)
+F-FRONTEND-010 — **P1 / Product + Reliability (FIXED)**: Planner waypoint callbacks are duplicated / overwritten, contributing to brittle “waypoint state” bugs (including the reported “remove S clears all” incident)
 - Where:
-  - `atc-frontend/static/planner/index.html:1385` and `:2152` (`window.onWaypointsCleared` defined twice; later definition overrides earlier)
+  - `atc-frontend/static/planner/index.html` (`window.onWaypointsCleared` is now defined once)
 - Why it matters: duplicated global callbacks cause divergent state updates (validation UI, internal route state, marker labels). This is exactly the kind of hidden coupling that leads to “one click nukes everything” behaviors.
 - Fix:
   - Consolidate planner callbacks into a single source of truth (one `onWaypointsCleared`, one `onWaypointAdded`, etc).
@@ -770,12 +770,10 @@ F-FRONTEND-014 — **P1 / Security + Product**: Role model is incomplete (e.g., 
 - Verify:
   - Add integration tests that a `viewer` session cannot perform POST/PUT/DELETE operations (expect 403).
 
-F-FRONTEND-015 — **P1 / Product (User-facing bug)**: Removing a stop (or clearing a single Start/End input) can clear *all* waypoints due to an unsafe `clearWaypoints()` call ordering
+F-FRONTEND-015 — **P1 / Product (User-facing bug) (FIXED)**: Removing a stop (or clearing a single Start/End input) can clear *all* waypoints due to an unsafe `clearWaypoints()` call ordering
 - Where:
   - `atc-frontend/static/planner/src/planner.js:520`–`541` (`clearWaypoints()` always calls `root.onWaypointsCleared()`)
-  - `atc-frontend/static/planner/index.html:1891`–`1900` (`removeStopInput` calls `FlightPlanner.clearWaypoints()` before `resyncWaypointsFromInputs()`)
-  - `atc-frontend/static/planner/index.html:1905`–`1915` (`clearSingleInput` calls `FlightPlanner.clearWaypoints()` before `resyncWaypointsFromInputs()`)
-  - `atc-frontend/static/planner/index.html:2152`–`2168` (`window.onWaypointsCleared` clears `routeInputData` and removes stop rows unless suppressed)
+  - `atc-frontend/static/planner/index.html` (`resyncWaypointsFromInputs()` sets `suppressWaypointSync=true` before calling `FlightPlanner.clearWaypoints()`)
 - Why it matters: this matches the observed behavior (“had waypoints up to S → clicked X on S → all disappeared”). It destroys operator input and makes the planner feel unreliable.
 - Fix:
   - Do not call `FlightPlanner.clearWaypoints()` in `removeStopInput` / `clearSingleInput` directly.
