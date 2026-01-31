@@ -1549,7 +1549,7 @@ Legend:
 - CI should run ignored integration tests (telemetry/conflict/geofence) — **DONE** (see `atc-drone/.github/workflows/ci.yml`)
 - Safety validation suite: geometry/CPA/AGL property tests in `atc-core` + API regressions in `atc-server` — **DONE** (see `atc-core/src/spatial.rs`, `atc-core/src/conflict.rs`, and `atc-server/src/api/tests.rs`)
 - Deterministic safety scenario regression harness (CLI + `tools/e2e_demo.sh`) — **DONE** (see `tools/safety_regression.sh`)
-- Secrets scanning allowlist for test/vendor cert keys — **TODO**
+- Secrets scanning allowlist for test/vendor cert keys — **DONE** (see `tools/ship_audit_scan.py`)
 
 ### P3 (quality / maintainability)
 

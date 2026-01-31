@@ -31,6 +31,13 @@ FINDING_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("todo", re.compile(r"\b(?:TODO|FIXME)\b")),
 ]
 
+ALLOWLIST_PRIVATE_KEY_PATH_PATTERNS: list[re.Pattern[str]] = [
+    # Vendored crate examples with intentionally-in-repo self-signed keys.
+    re.compile(r"(?:^|/)vendor/axum-server-[^/]+/examples/self-signed-certs/"),
+    # InterUSS DSS test certs (generated or included for local test deployments).
+    re.compile(r"(?:^|/)interuss-dss/build/test-certs/"),
+]
+
 TODO_EXTS = {
     ".cjs",
     ".go",
@@ -83,6 +90,11 @@ def file_ext_key(path: Path) -> str:
     return path.suffix
 
 
+def is_allowlisted_private_key(path: Path) -> bool:
+    posix = path.as_posix()
+    return any(pattern.search(posix) for pattern in ALLOWLIST_PRIVATE_KEY_PATH_PATTERNS)
+
+
 def scan_file(path: Path) -> tuple[dict, list[Finding]]:
     data = path.read_bytes()
     is_binary = looks_binary(data)
@@ -106,6 +118,8 @@ def scan_file(path: Path) -> tuple[dict, list[Finding]]:
 
     for line_idx, line in enumerate(text.splitlines(), start=1):
         for pattern_name, pattern in FINDING_PATTERNS:
+            if pattern_name == "private_key" and is_allowlisted_private_key(path):
+                continue
             if pattern_name == "rust_unwrap" and ext not in RUST_UNWRAP_EXTS:
                 continue
             if pattern_name == "eval_exec" and ext not in EVAL_EXEC_EXTS:
