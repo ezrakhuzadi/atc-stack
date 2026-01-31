@@ -337,11 +337,18 @@ F-DRONE-011 — **P1 / Reliability (FIXED)**: Flight plan state transitions are 
 - Verify:
   - `cargo test -p atc-server` (includes `loops::mission_loop` persistence tests).
 
-F-DRONE-012 — **P2 / UX + Debuggability**: “ATC-drone down but geofences still visible” is expected with Blender TTL (needs explicit explanation in UI)
+F-DRONE-012 — **P2 / UX + Debuggability (FIXED)**: “ATC-drone down but geofences still visible” is expected with Blender TTL (needs explicit explanation in UI)
 - Where: `atc-drone/crates/atc-server/src/loops/geofence_sync_loop.rs` syncs geofences to Blender with `GEOFENCE_TTL_HOURS=6`
 - Why it matters: operators can misinterpret stale geofences as current ATC state.
-- Fix: surface source + freshness in the UI (local vs Blender vs conflict geofence) and add “data stale” banners when `atc-drone` is unreachable.
-- Verify: kill `atc-drone` container and confirm UI clearly indicates stale geofence source/freshness.
+- Fix (implemented):
+  - `atc-drone` now includes `source: local|blender` in geofence API responses (distinguishes ATC-managed vs Blender-sourced geofences).
+  - `atc-frontend` now surfaces geofence freshness and outage context:
+    - Map page shows a geofence status panel; on fetch failure it clears overlays and warns that Blender TTL can keep geofences around for up to 6 hours.
+    - Planner clears the geofence overlay and shows a toast when the ATC backend is unreachable.
+    - Geofences page shows source stats and treats Blender geofences as read-only (no edit/delete controls).
+- Verify:
+  - With stack running, open Map + Geofences pages and confirm you can distinguish `local` vs `blender` geofences.
+  - Stop `atc-drone` and confirm the UI clears overlays and displays a clear “ATC offline / Blender TTL” warning within one refresh or action.
 
 F-DRONE-013 — **P0 / Security (FIXED)**: Fail closed on placeholder/shared-secret defaults in production
 - Where:
