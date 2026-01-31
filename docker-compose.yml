@@ -231,7 +231,11 @@ services:
       - interop_ecosystem_network
 
   local-dss-rid-bootstrapper:
-    image: interuss/dss:${DSS_IMAGE_TAG:-v0.15.0}
+    build:
+      context: ./dss-hardened
+      args:
+        DSS_IMAGE_TAG: ${DSS_IMAGE_TAG:-v0.15.0}
+    image: atc-dss-hardened:${DSS_IMAGE_TAG:-v0.15.0}
     container_name: local-dss-rid-bootstrapper
     profiles: ["dss"]
     environment:
@@ -251,7 +255,11 @@ services:
       - interop_ecosystem_network
 
   local-dss-scd-bootstrapper:
-    image: interuss/dss:${DSS_IMAGE_TAG:-v0.15.0}
+    build:
+      context: ./dss-hardened
+      args:
+        DSS_IMAGE_TAG: ${DSS_IMAGE_TAG:-v0.15.0}
+    image: atc-dss-hardened:${DSS_IMAGE_TAG:-v0.15.0}
     container_name: local-dss-scd-bootstrapper
     profiles: ["dss"]
     environment:
@@ -271,7 +279,11 @@ services:
       - interop_ecosystem_network
 
   local-dss-core:
-    image: interuss/dss:${DSS_IMAGE_TAG:-v0.15.0}
+    build:
+      context: ./dss-hardened
+      args:
+        DSS_IMAGE_TAG: ${DSS_IMAGE_TAG:-v0.15.0}
+    image: atc-dss-hardened:${DSS_IMAGE_TAG:-v0.15.0}
     container_name: local-dss-core
     profiles: ["dss"]
     restart: unless-stopped

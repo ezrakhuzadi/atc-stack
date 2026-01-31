@@ -1180,7 +1180,7 @@ F-DSS-002 — **P1 / Reliability (FIXED)**: DSS schema bootstrapping uses `-db_v
 - Verify:
   - Fresh bring-up from scratch yields identical schema and a green healthcheck across runs.
 
-F-DSS-003 — **P2 / Security + Supply chain**: DSS container image includes test certs and runs without an explicit non-root user
+F-DSS-003 — **P2 / Security + Supply chain (FIXED)**: DSS container image includes test certs and runs without an explicit non-root user
 - Where:
   - `interuss-dss/Dockerfile` (final stage does not set `USER`; copies `build/test-certs` into image)
 - Why it matters: for a production deployment you generally want:
@@ -1188,10 +1188,14 @@ F-DSS-003 — **P2 / Security + Supply chain**: DSS container image includes tes
   - non-root containers,
   - explicit separation between build/test artifacts and prod artifacts.
   For this stack it’s acceptable because it’s a local sandbox, but it reinforces that “local-dss” is not a production posture.
-- Fix:
-  - Use an upstream DSS production image/config or build a hardened image profile (no test-certs; non-root; minimal tools).
+- Fix (implemented):
+  - Added a hardened DSS wrapper image at `dss-hardened/Dockerfile`:
+    - deletes `/test-certs` from the upstream runtime image,
+    - runs as a non-root user (uid/gid 10000).
+  - `docker-compose.yml` now uses `atc-dss-hardened:${DSS_IMAGE_TAG}` for the DSS core + schema bootstrappers.
 - Verify:
-  - Container runs as non-root and still passes health checks in a hardened profile.
+  - `docker run --rm atc-dss-hardened:${DSS_IMAGE_TAG} id` shows a non-root uid.
+  - `docker run --rm atc-dss-hardened:${DSS_IMAGE_TAG} test ! -e /test-certs` passes.
 
 F-DSS-004 — **P0 / Security (FIXED)**: Dummy OAuth issues tokens from a bundled private key and is bound to a host port in the demo stack
 - Where:
