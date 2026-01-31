@@ -1547,7 +1547,7 @@ Legend:
 - Request-ID propagation everywhere — **DONE** (see `atc-drone` request-id middleware + `atc-frontend` proxy headers)
 - CI gates: Rust fmt/clippy/test; Python compile/tests; Node smoke — **DONE** (`atc-drone`, `atc-blender`, `atc-frontend`)
 - CI should run ignored integration tests (telemetry/conflict/geofence) — **DONE** (see `atc-drone/.github/workflows/ci.yml`)
-- Safety validation suite: geometry/CPA/AGL property tests in `atc-core` + API regressions in `atc-server` — **TODO**
+- Safety validation suite: geometry/CPA/AGL property tests in `atc-core` + API regressions in `atc-server` — **DONE** (see `atc-core/src/spatial.rs`, `atc-core/src/conflict.rs`, and `atc-server/src/api/tests.rs`)
 - Deterministic safety scenario regression harness (CLI + `tools/e2e_demo.sh`) — **TODO**
 - Secrets scanning allowlist for test/vendor cert keys — **TODO**
 
