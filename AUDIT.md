@@ -1529,24 +1529,24 @@ Legend:
 
 ### P1 (should fix before “real users” / external pilots)
 
-- Frontend brute-force throttling — **TODO**
-- WebSocket Origin enforcement (CSWSH) — **TODO**
+- Frontend brute-force throttling — **DONE** (see **F-FRONTEND-004**)
+- WebSocket Origin enforcement (CSWSH) — **DONE** (see **F-FRONTEND-006**)
 - Remove WS query-param tokens (use headers/proxy-only) — **DONE** (see **F-DRONE-008**)
 - Route engine hard caps defense-in-depth — **DONE** (see **F-DRONE-030**)
 - Flight-plan conflict duration correctness (avoid fixed fallback) — **TODO**
 - Gateway: backoff + command expiry — **TODO**
-- Logout should be POST + CSRF-protected — **TODO**
+- Logout should be POST + CSRF-protected — **DONE** (see **F-FRONTEND-003**)
 - Rate-limit or auth‑gate `/v1/geofences/check-route` — **DONE** (moved to P0)
 - Reduce public exposure of operational data endpoints — **DONE** (moved to P0)
-- Add HTTP client timeouts across SDK/Blender/Compliance callers — **TODO**
+- Add HTTP client timeouts across SDK/Blender/Compliance callers — **DONE** (core paths; see `atc-sdk`, `atc-blender`, and `atc-server` reqwest builders)
 - Persist flight plan status transitions (mission loop) — **DONE** (see **F-DRONE-011**)
 - Enforce `ATC_COMMAND_ACK_TIMEOUT_SECS > 0` and cap pending commands per drone — **DONE** (see **F-DRONE-014**)
 
 ### P2 (ops readiness)
 
-- Request-ID propagation everywhere — **TODO** (partial)
-- CI gates: Rust fmt/clippy/test; Python compile/tests; Node lint/smoke — **TODO**
-- CI should run ignored integration tests (telemetry/conflict/geofence) — **TODO**
+- Request-ID propagation everywhere — **DONE** (see `atc-drone` request-id middleware + `atc-frontend` proxy headers)
+- CI gates: Rust fmt/clippy/test; Python compile/tests; Node smoke — **DONE** (`atc-drone`, `atc-blender`, `atc-frontend`)
+- CI should run ignored integration tests (telemetry/conflict/geofence) — **DONE** (see `atc-drone/.github/workflows/ci.yml`)
 - Safety validation suite: geometry/CPA/AGL property tests in `atc-core` + API regressions in `atc-server` — **TODO**
 - Deterministic safety scenario regression harness (CLI + `tools/e2e_demo.sh`) — **TODO**
 - Secrets scanning allowlist for test/vendor cert keys — **TODO**
