@@ -1553,8 +1553,8 @@ Legend:
 
 ### P3 (quality / maintainability)
 
-- Eliminate magic numbers into shared constants/helpers — **TODO**
-- Reduce O(N) polling loops and full scans in hot paths — **TODO**
+- Eliminate magic numbers into shared constants/helpers — **DONE** (see `atc-drone/crates/atc-core/src/conflict.rs` and `atc-drone/crates/atc-server/src/loops/conflict_loop.rs`)
+- Reduce O(N) polling loops and full scans in hot paths — **DONE** (see `atc-drone/crates/atc-server/src/loops/conflict_loop.rs` and `atc-drone/crates/atc-server/src/loops/blender_sync_loop.rs`)
 
 ---
 
