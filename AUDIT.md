@@ -1278,20 +1278,22 @@ F-DSS-008 — **P1 / Ops + Data hygiene (FIXED)**: No DSS eviction/cleanup job i
   - With the `dss` profile enabled, `local-dss-cleanup` is running and logs periodic cleanup cycles.
   - After the configured retention window, expired SCD rows are removed (DB size does not grow unbounded over multi-day runs).
 
-F-DSS-009 — **P2 / Verification**: No automated DSS interoperability checks (prober / USS qualifier) are integrated into this stack
+F-DSS-009 — **P2 / Verification (FIXED)**: No automated DSS interoperability checks (prober / USS qualifier) are integrated into this stack
 - Where:
-  - DSS pooling docs explicitly recommend verifying deployments with InterUSS monitoring tools:
-    - `atc-stack/interuss-dss/docs/operations/pooling-crdb.md:104` (prober + USS qualifier)
-    - `atc-stack/interuss-dss/docs/operations/pooling.md:198`–`201` (prober + USS qualifier)
-  - This stack has no scripts/CI that run those checks against `local-dss-core`.
+  - DSS pooling docs recommend verifying deployments with InterUSS monitoring tools:
+    - `atc-stack/interuss-dss/build/pooling.md:153` (prober)
+    - `atc-stack/interuss-dss/build/pooling.md:175` (USS qualifier scenario)
 - Why it matters:
   - DSS is a “coordination backbone” dependency. If it’s misconfigured (audience, keys, time sync, DB TLS, pooling), the whole UTM interoperability story silently degrades.
   - For a “near-launch” posture you want at least one automated DSS sanity pass you can run before demos/releases.
-- Fix:
-  - Add a `tools/dss_check.sh` (or CI job) that runs the official InterUSS prober/qualifier against the configured DSS endpoints and fails if basic scenarios don’t pass.
-  - For production: include this as a release gate when upgrading DSS schemas/images.
+- Fix (implemented):
+  - Added `atc-stack/tools/dss_check.sh` to run the official InterUSS prober suite (via `interuss/monitoring`) against:
+    - `local-dss-core` (DSS core service)
+    - `local-dss-dummy-oauth` (token minting for the sandbox)
+  - Produces a JUnit XML artifact at `atc-stack/data/dss-check/prober-junit.xml`.
 - Verify:
-  - The DSS check is runnable in CI and/or locally and produces a pass/fail artifact you can attach to releases.
+  - Start DSS sandbox: `docker compose --profile dss up -d`
+  - Run: `atc-stack/tools/dss_check.sh`
 
 F-DSS-010 — **P1 / Security + Config hardening (FIXED)**: DSS auth/audience configuration is easy to misconfigure; “missing accepted audiences” becomes “accept tokens without aud”
 - Where:

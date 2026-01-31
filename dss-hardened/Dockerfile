@@ -7,5 +7,5 @@ RUN rm -rf /test-certs
 
 # Run as non-root in the hardened profile.
 RUN addgroup -S -g 10000 dss && adduser -S -D -u 10000 -G dss dss
+WORKDIR /tmp
 USER 10000:10000
-

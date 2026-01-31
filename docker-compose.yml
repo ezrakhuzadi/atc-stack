@@ -177,17 +177,18 @@ services:
       - ATC_ENV=${ATC_ENV:-development}
     entrypoint: ["/bin/sh", "-lc"]
     # Keep Cockroach memory bounded for laptops/small VMs (stability > throughput for demo).
-    command: |
-      if [ "${ATC_ENV:-development}" = "production" ]; then
-        echo "[DSS] Refusing to start DSS sandbox when ATC_ENV=production" >&2
-        exit 1
-      fi
-      exec cockroach start --insecure \
-        --listen-addr=0.0.0.0:26257 \
-        --http-addr=0.0.0.0:8080 \
-        --join=local-dss-crdb:26257 \
-        --cache=256MiB \
-        --max-sql-memory=256MiB
+    command:
+      - |
+        if [ "${ATC_ENV:-development}" = "production" ]; then
+          echo "[DSS] Refusing to start DSS sandbox when ATC_ENV=production" >&2
+          exit 1
+        fi
+        exec cockroach start --insecure \
+          --listen-addr=0.0.0.0:26257 \
+          --http-addr=0.0.0.0:8080 \
+          --join=local-dss-crdb:26257 \
+          --cache=256MiB \
+          --max-sql-memory=256MiB
     ports:
       - "127.0.0.1:26257:26257"
       - "127.0.0.1:8080:8080"
@@ -231,22 +232,19 @@ services:
       - interop_ecosystem_network
 
   local-dss-rid-bootstrapper:
-    build:
-      context: ./dss-hardened
-      args:
-        DSS_IMAGE_TAG: ${DSS_IMAGE_TAG:-v0.15.0}
     image: atc-dss-hardened:${DSS_IMAGE_TAG:-v0.15.0}
     container_name: local-dss-rid-bootstrapper
     profiles: ["dss"]
     environment:
       - ATC_ENV=${ATC_ENV:-development}
     entrypoint: ["/bin/sh", "-lc"]
-    command: |
-      if [ "${ATC_ENV:-development}" = "production" ]; then
-        echo "[DSS] Refusing to start DSS sandbox when ATC_ENV=production" >&2
-        exit 1
-      fi
-      exec /usr/bin/db-manager -schemas_dir=/db-schemas/rid -db_version ${DSS_RID_DB_VERSION:-4.0.0} -cockroach_host local-dss-crdb
+    command:
+      - |
+        if [ "${ATC_ENV:-development}" = "production" ]; then
+          echo "[DSS] Refusing to start DSS sandbox when ATC_ENV=production" >&2
+          exit 1
+        fi
+        exec /usr/bin/db-manager -schemas_dir=/db-schemas/rid -db_version ${DSS_RID_DB_VERSION:-4.0.0} -cockroach_host local-dss-crdb
     depends_on:
       local-dss-crdb-init:
         condition: service_completed_successfully
@@ -255,22 +253,19 @@ services:
       - interop_ecosystem_network
 
   local-dss-scd-bootstrapper:
-    build:
-      context: ./dss-hardened
-      args:
-        DSS_IMAGE_TAG: ${DSS_IMAGE_TAG:-v0.15.0}
     image: atc-dss-hardened:${DSS_IMAGE_TAG:-v0.15.0}
     container_name: local-dss-scd-bootstrapper
     profiles: ["dss"]
     environment:
       - ATC_ENV=${ATC_ENV:-development}
     entrypoint: ["/bin/sh", "-lc"]
-    command: |
-      if [ "${ATC_ENV:-development}" = "production" ]; then
-        echo "[DSS] Refusing to start DSS sandbox when ATC_ENV=production" >&2
-        exit 1
-      fi
-      exec /usr/bin/db-manager -schemas_dir=/db-schemas/scd -db_version ${DSS_SCD_DB_VERSION:-3.1.0} -cockroach_host local-dss-crdb
+    command:
+      - |
+        if [ "${ATC_ENV:-development}" = "production" ]; then
+          echo "[DSS] Refusing to start DSS sandbox when ATC_ENV=production" >&2
+          exit 1
+        fi
+        exec /usr/bin/db-manager -schemas_dir=/db-schemas/scd -db_version ${DSS_SCD_DB_VERSION:-3.1.0} -cockroach_host local-dss-crdb
     depends_on:
       local-dss-crdb-init:
         condition: service_completed_successfully
@@ -290,25 +285,26 @@ services:
     environment:
       - ATC_ENV=${ATC_ENV:-development}
     entrypoint: ["/bin/sh", "-lc"]
-    command: |
-      if [ "${ATC_ENV:-development}" = "production" ]; then
-        echo "[DSS] Refusing to start DSS sandbox when ATC_ENV=production" >&2
-        exit 1
-      fi
-      audiences="${DSS_ACCEPTED_JWT_AUDIENCES:-localhost,host.docker.internal,local-dss-core}"
-      if [ -z "$$audiences" ] || echo "$$audiences" | grep -qE '(^,|,,|,$)'; then
-        echo "[DSS] Invalid DSS accepted audiences: '$$audiences' (refusing to start)" >&2
-        exit 1
-      fi
-      exec /usr/bin/core-service \
-        -cockroach_host local-dss-crdb \
-        -public_key_files /var/test-certs/auth2.pem \
-        -log_format console \
-        -addr :8082 \
-        -accepted_jwt_audiences "$$audiences" \
-        -enable_scd \
-        -enable_http \
-        -locality local_dev
+    command:
+      - |
+        if [ "${ATC_ENV:-development}" = "production" ]; then
+          echo "[DSS] Refusing to start DSS sandbox when ATC_ENV=production" >&2
+          exit 1
+        fi
+        audiences="${DSS_ACCEPTED_JWT_AUDIENCES:-localhost,host.docker.internal,local-dss-core}"
+        if [ -z "$$audiences" ] || echo "$$audiences" | grep -qE '(^,|,,|,$)'; then
+          echo "[DSS] Invalid DSS accepted audiences: '$$audiences' (refusing to start)" >&2
+          exit 1
+        fi
+        exec /usr/bin/core-service \
+          -cockroach_host local-dss-crdb \
+          -public_key_files /var/test-certs/auth2.pem \
+          -log_format console \
+          -addr :8082 \
+          -accepted_jwt_audiences "$$audiences" \
+          -enable_scd \
+          -enable_http \
+          -locality local_dev
     ports:
       - "127.0.0.1:8082:8082"
     depends_on:
@@ -339,52 +335,53 @@ services:
     environment:
       - ATC_ENV=${ATC_ENV:-development}
     entrypoint: ["/bin/sh", "-lc"]
-    command: |
-      set -euo pipefail
-      if [ "${ATC_ENV:-development}" = "production" ]; then
-        echo "[DSS] Refusing to start DSS sandbox cleanup when ATC_ENV=production" >&2
-        exit 1
-      fi
+    command:
+      - |
+        set -euo pipefail
+        if [ "${ATC_ENV:-development}" = "production" ]; then
+          echo "[DSS] Refusing to start DSS sandbox cleanup when ATC_ENV=production" >&2
+          exit 1
+        fi
 
-      retention_hours="${DSS_SCD_CLEANUP_RETENTION_HOURS:-24}"
-      interval_seconds="${DSS_SCD_CLEANUP_INTERVAL_SECONDS:-3600}"
+        retention_hours="${DSS_SCD_CLEANUP_RETENTION_HOURS:-24}"
+        interval_seconds="${DSS_SCD_CLEANUP_INTERVAL_SECONDS:-3600}"
 
-      case "$$retention_hours" in ''|*[!0-9]*)
-        echo "[DSS] Invalid DSS_SCD_CLEANUP_RETENTION_HOURS='$$retention_hours' (must be an integer >= 0)" >&2
-        exit 1
-      esac
-      case "$$interval_seconds" in ''|*[!0-9]*)
-        echo "[DSS] Invalid DSS_SCD_CLEANUP_INTERVAL_SECONDS='$$interval_seconds' (must be an integer >= 1)" >&2
-        exit 1
-      esac
-      if [ "$$interval_seconds" -lt 1 ]; then
-        echo "[DSS] Invalid DSS_SCD_CLEANUP_INTERVAL_SECONDS='$$interval_seconds' (must be >= 1)" >&2
-        exit 1
-      fi
+        case "$$retention_hours" in ''|*[!0-9]*)
+          echo "[DSS] Invalid DSS_SCD_CLEANUP_RETENTION_HOURS='$$retention_hours' (must be an integer >= 0)" >&2
+          exit 1
+        esac
+        case "$$interval_seconds" in ''|*[!0-9]*)
+          echo "[DSS] Invalid DSS_SCD_CLEANUP_INTERVAL_SECONDS='$$interval_seconds' (must be an integer >= 1)" >&2
+          exit 1
+        esac
+        if [ "$$interval_seconds" -lt 1 ]; then
+          echo "[DSS] Invalid DSS_SCD_CLEANUP_INTERVAL_SECONDS='$$interval_seconds' (must be >= 1)" >&2
+          exit 1
+        fi
 
-      echo "[DSS] Waiting for CockroachDB..."
-      for i in $$(seq 1 120); do
-        cockroach sql --insecure --host=local-dss-crdb:26257 -e "SELECT 1" >/dev/null 2>&1 && break
-        sleep 2
-      done
+        echo "[DSS] Waiting for CockroachDB..."
+        for i in $$(seq 1 120); do
+          cockroach sql --insecure --host=local-dss-crdb:26257 -e "SELECT 1" >/dev/null 2>&1 && break
+          sleep 2
+        done
 
-      echo "[DSS] Starting periodic SCD cleanup: delete ends_at < now() - $$retention_hours hours (every $$interval_seconds seconds)"
-      while true; do
-        cockroach sql --insecure --host=local-dss-crdb:26257 --database=scd -e "
-          BEGIN;
-          DELETE FROM scd_operations
-            WHERE ends_at IS NOT NULL
-              AND ends_at < now() - INTERVAL '$$retention_hours hours';
-          DELETE FROM scd_constraints
-            WHERE ends_at IS NOT NULL
-              AND ends_at < now() - INTERVAL '$$retention_hours hours';
-          DELETE FROM scd_subscriptions
-            WHERE ends_at IS NOT NULL
-              AND ends_at < now() - INTERVAL '$$retention_hours hours';
-          COMMIT;
-        "
-        sleep "$$interval_seconds"
-      done
+        echo "[DSS] Starting periodic SCD cleanup: delete ends_at < now() - $$retention_hours hours (every $$interval_seconds seconds)"
+        while true; do
+          cockroach sql --insecure --host=local-dss-crdb:26257 --database=scd -e "
+            BEGIN;
+            DELETE FROM scd_operations
+              WHERE ends_at IS NOT NULL
+                AND ends_at < now() - INTERVAL '$$retention_hours hours';
+            DELETE FROM scd_constraints
+              WHERE ends_at IS NOT NULL
+                AND ends_at < now() - INTERVAL '$$retention_hours hours';
+            DELETE FROM scd_subscriptions
+              WHERE ends_at IS NOT NULL
+                AND ends_at < now() - INTERVAL '$$retention_hours hours';
+            COMMIT;
+          "
+          sleep "$$interval_seconds"
+        done
     depends_on:
       local-dss-scd-bootstrapper:
         condition: service_completed_successfully
@@ -401,12 +398,13 @@ services:
     environment:
       - ATC_ENV=${ATC_ENV:-development}
     entrypoint: ["/bin/sh", "-lc"]
-    command: |
-      if [ "${ATC_ENV:-development}" = "production" ]; then
-        echo "[DSS] Refusing to start dummy OAuth when ATC_ENV=production" >&2
-        exit 1
-      fi
-      exec /usr/bin/dummy-oauth -private_key_file /var/test-certs/auth2.key
+    command:
+      - |
+        if [ "${ATC_ENV:-development}" = "production" ]; then
+          echo "[DSS] Refusing to start dummy OAuth when ATC_ENV=production" >&2
+          exit 1
+        fi
+        exec /usr/bin/dummy-oauth -private_key_file /var/test-certs/auth2.key
     ports:
       - "127.0.0.1:8085:8085"
     volumes:
@@ -566,12 +564,13 @@ services:
       MOCK_USS_PORT: 9100
       ISA_DURATION_SEC: 21600
     entrypoint: ["/bin/sh", "-lc"]
-    command: |
-      if [ "${ATC_ENV:-development}" = "production" ]; then
-        echo "[DSS] Refusing to start mock-uss when ATC_ENV=production" >&2
-        exit 1
-      fi
-      exec python /app/mock_uss.py
+    command:
+      - |
+        if [ "${ATC_ENV:-development}" = "production" ]; then
+          echo "[DSS] Refusing to start mock-uss when ATC_ENV=production" >&2
+          exit 1
+        fi
+        exec python /app/mock_uss.py
     volumes:
       - ./mock-uss/mock_uss.py:/app/mock_uss.py:ro
     depends_on:
