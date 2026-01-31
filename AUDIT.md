@@ -770,18 +770,17 @@ F-FRONTEND-010 — **P1 / Product + Reliability (FIXED)**: Planner waypoint call
   - UI test: create A→…→S, remove S, assert A→… remain.
   - UI test: clear all, assert all cleared (map + inputs + validation panel).
 
-F-FRONTEND-011 — **P2 / Security + Ops**: Container hardening is minimal (runs as root; dev-oriented mounts)
+F-FRONTEND-011 — **P2 / Security + Ops (FIXED)**: Container hardening is minimal (runs as root; dev-oriented mounts)
 - Where:
-  - `atc-frontend/Dockerfile` (no non-root user; uses `npm install` rather than production-oriented `npm ci --omit=dev`)
-  - `atc-frontend/docker-compose.yml` (bind-mounts `server.js`, `views`, `static`, etc; dev ergonomics, not production posture)
+  - `atc-frontend/Dockerfile` (image user + dependency install strategy)
+  - `atc-frontend/docker-compose.yml` vs `atc-frontend/docker-compose-dev.yml` (prod vs dev posture)
 - Why it matters: if the UI container is compromised (XSS leading to SSRF / RCE in Node deps, or a dependency exploit), running as root and with broad mounts increases blast radius and persistence.
-- Fix:
-  - Run as a non-root user in the image; use a read-only filesystem where possible; drop Linux capabilities.
-  - Split dev vs prod compose; remove live mounts in production.
-  - Use `npm ci --omit=dev` for reproducible production installs.
+- Fix (implemented):
+  - `atc-frontend/Dockerfile` now installs with `npm ci --omit=dev` and runs as `USER node`.
+  - Production compose (`atc-frontend/docker-compose.yml`) no longer bind-mounts source code.
+  - Dev compose (`atc-frontend/docker-compose-dev.yml`) keeps live mounts for local iteration.
 - Verify:
-  - Container security scan (Trivy/Grype) as a CI job.
-  - Confirm container runs with `USER node` (or similar) and that app still works.
+  - Manual: `docker compose up` then `docker exec atc-frontend id` shows the process running as a non-root user.
 
 F-FRONTEND-012 — **P2 / Security + Reliability (FIXED)**: WS upgrade handler silently ignores unknown paths (socket leak / DoS risk)
 - Where:
