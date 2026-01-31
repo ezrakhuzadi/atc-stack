@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 import os
@@ -39,6 +40,21 @@ def env_float(name: str, default: float) -> float:
 
 def now_rfc3339() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def parse_rfc3339(value: object) -> Optional[datetime]:
+    if not isinstance(value, str):
+        return None
+    raw = value.strip()
+    if not raw:
+        return None
+    try:
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(raw)
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 @dataclass
@@ -326,9 +342,19 @@ def main() -> int:
     command_poll_hz = env_float("ATC_COMMAND_POLL_HZ", 2.0)
     timeout_s = env_float("ATC_HTTP_TIMEOUT_S", 5.0)
     target_reached_m = env_float("ATC_TARGET_REACHED_M", 12.0)
+    backoff_factor = env_float("ATC_BACKOFF_FACTOR", 2.0)
+    backoff_jitter_pct = env_float("ATC_BACKOFF_JITTER_PCT", 0.15)
+    command_poll_backoff_max_s = env_float("ATC_COMMAND_POLL_BACKOFF_MAX_S", 30.0)
+    telemetry_backoff_max_s = env_float("ATC_TELEMETRY_BACKOFF_MAX_S", 30.0)
 
-    send_interval_s = 1.0 / telemetry_hz if telemetry_hz > 0 else 0.2
+    setpoint_interval_s = 1.0 / telemetry_hz if telemetry_hz > 0 else 0.2
     command_poll_interval_s = 1.0 / command_poll_hz if command_poll_hz > 0 else 1.0
+    backoff_jitter_pct = max(0.0, min(backoff_jitter_pct, 0.9))
+    jitter_factor = 1.0
+    if backoff_jitter_pct > 0.0:
+        digest = hashlib.sha256(drone_id.encode("utf-8")).digest()
+        unit = int.from_bytes(digest[:2], "big") / 65535.0
+        jitter_factor = 1.0 + ((unit * 2.0 - 1.0) * backoff_jitter_pct)
 
     logging.info("ATC: %s drone_id=%s", atc_url, drone_id)
     logging.info("MAVLink: %s", mavlink_endpoint)
@@ -354,8 +380,11 @@ def main() -> int:
 
     telemetry = TelemetryState()
     commands = CommandState()
-    next_send = 0.0
     next_poll = 0.0
+    next_setpoint_send = 0.0
+    next_telemetry_send = 0.0
+    poll_backoff_s = command_poll_interval_s
+    telemetry_backoff_s = setpoint_interval_s
 
     while True:
         msg = mav.recv_match(blocking=True, timeout=1.0)
@@ -386,15 +415,29 @@ def main() -> int:
             commands.previous_mode = ""
 
         if now >= next_poll:
-            next_poll = now + command_poll_interval_s
             try:
                 cmd = atc.get_next_command()
             except Exception as exc:  # noqa: BLE001
                 logging.debug("command poll failed: %s", exc)
                 cmd = None
+                poll_backoff_s = max(command_poll_interval_s, poll_backoff_s) * max(backoff_factor, 1.0)
+                poll_backoff_s = min(poll_backoff_s, max(command_poll_backoff_max_s, command_poll_interval_s))
+                next_poll = now + (poll_backoff_s * jitter_factor)
+            else:
+                poll_backoff_s = command_poll_interval_s
+                next_poll = now + command_poll_interval_s
 
             if isinstance(cmd, dict) and cmd.get("command_id"):
                 command_id = str(cmd.get("command_id"))
+                expires_at = parse_rfc3339(cmd.get("expires_at"))
+                if expires_at is not None and expires_at <= datetime.now(timezone.utc):
+                    logging.info("skipping expired command %s (expires_at=%s)", command_id, cmd.get("expires_at"))
+                    try:
+                        atc.ack_command(command_id)
+                    except Exception as exc:  # noqa: BLE001
+                        logging.warning("command ack failed (%s): %s", command_id, exc)
+                    continue
+
                 command_type = cmd.get("command_type") or {}
                 kind = str(command_type.get("type") or "").upper()
                 handled = False
@@ -467,37 +510,43 @@ def main() -> int:
                     except Exception as exc:  # noqa: BLE001
                         logging.warning("command ack failed (%s): %s", command_id, exc)
 
-        if now < next_send:
+        if now >= next_setpoint_send:
+            next_setpoint_send = now + setpoint_interval_s
+            if telemetry.ready() and commands.active_target and commands.hold_until is None:
+                try:
+                    send_position_target(mav, *commands.active_target)
+                except Exception as exc:  # noqa: BLE001
+                    logging.debug("failed to send setpoint: %s", exc)
+
+                dist = haversine_m(
+                    float(telemetry.lat),
+                    float(telemetry.lon),
+                    commands.active_target[0],
+                    commands.active_target[1],
+                )
+                if dist <= target_reached_m:
+                    if commands.reroute_queue:
+                        commands.active_target = commands.reroute_queue.pop(0)
+                        logging.info("advanced reroute target (remaining=%s)", len(commands.reroute_queue))
+                    else:
+                        commands.active_target = None
+
+        if now < next_telemetry_send:
             continue
-        next_send = now + send_interval_s
+        next_telemetry_send = now + setpoint_interval_s
 
         if not telemetry.ready():
             continue
-
-        if commands.active_target and commands.hold_until is None:
-            try:
-                send_position_target(mav, *commands.active_target)
-            except Exception as exc:  # noqa: BLE001
-                logging.debug("failed to send setpoint: %s", exc)
-
-            dist = haversine_m(
-                float(telemetry.lat),
-                float(telemetry.lon),
-                commands.active_target[0],
-                commands.active_target[1],
-            )
-            if dist <= target_reached_m:
-                if commands.reroute_queue:
-                    commands.active_target = commands.reroute_queue.pop(0)
-                    logging.info("advanced reroute target (remaining=%s)", len(commands.reroute_queue))
-                else:
-                    commands.active_target = None
 
         try:
             atc.send_telemetry(telemetry)
         except Exception as exc:  # noqa: BLE001
             logging.warning("telemetry send failed: %s", exc)
-            time.sleep(1.0)
+            telemetry_backoff_s = max(setpoint_interval_s, telemetry_backoff_s) * max(backoff_factor, 1.0)
+            telemetry_backoff_s = min(telemetry_backoff_s, max(telemetry_backoff_max_s, setpoint_interval_s))
+            next_telemetry_send = now + (telemetry_backoff_s * jitter_factor)
+        else:
+            telemetry_backoff_s = setpoint_interval_s
 
 
 if __name__ == "__main__":

@@ -1355,10 +1355,10 @@ F-DSS-011 — **P1 / Reliability (FIXED)**: JWKS refresh failure panics and can 
 
 **Already fixed/guarded**
 - TLS insecure mode is guarded: refuses to start in production with `ATC_TLS_INSECURE=1`.
+- LTE flaps: command polling + telemetry now use exponential backoff + deterministic jitter (per `ATC_DRONE_ID`).
+- Command expiry handling: `expires_at` is respected and expired commands are skipped + ACKed.
 
 **Open risks / work**
-- LTE flaps: add exponential backoff + jitter to avoid thundering herd retries.
-- Command expiry handling: do not execute stale reroutes after long comms gaps.
 - Altitude reference correctness end-to-end (MSL/AMSL/geoid offsets) must be verified before autonomy.
 
 ### 5.6 Safety Assurance & Validation Coverage (Missing)
@@ -1533,8 +1533,8 @@ Legend:
 - WebSocket Origin enforcement (CSWSH) — **DONE** (see **F-FRONTEND-006**)
 - Remove WS query-param tokens (use headers/proxy-only) — **DONE** (see **F-DRONE-008**)
 - Route engine hard caps defense-in-depth — **DONE** (see **F-DRONE-030**)
-- Flight-plan conflict duration correctness (avoid fixed fallback) — **TODO**
-- Gateway: backoff + command expiry — **TODO**
+- Flight-plan conflict duration correctness (avoid fixed fallback) — **DONE** (see `atc-drone/crates/atc-core/src/spatial.rs`)
+- Gateway: backoff + command expiry — **DONE** (see `mavlink-gateway/main.py`)
 - Logout should be POST + CSRF-protected — **DONE** (see **F-FRONTEND-003**)
 - Rate-limit or auth‑gate `/v1/geofences/check-route` — **DONE** (moved to P0)
 - Reduce public exposure of operational data endpoints — **DONE** (moved to P0)
