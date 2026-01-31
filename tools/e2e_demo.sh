@@ -10,6 +10,7 @@ ATC_BASE_URL="${ATC_BASE_URL:-http://localhost:${ATC_SERVER_PORT}}"
 FRONTEND_BASE_URL="${FRONTEND_BASE_URL:-http://localhost:${ATC_FRONTEND_PORT}}"
 
 ATC_REGISTRATION_TOKEN="${ATC_REGISTRATION_TOKEN:-change-me-registration-token}"
+ATC_ADMIN_TOKEN="${ATC_ADMIN_TOKEN:-change-me-admin}"
 
 log() { printf "[e2e] %s\n" "$*"; }
 
@@ -57,6 +58,18 @@ post_json_auth() {
   curl -fsS -H 'content-type: application/json' -H "authorization: Bearer $token" -d "$data" "$url"
 }
 
+post_json_admin() {
+  local url="$1"
+  local data="$2"
+  curl -fsS -H 'content-type: application/json' -H "authorization: Bearer $ATC_ADMIN_TOKEN" -d "$data" "$url"
+}
+
+get_auth() {
+  local url="$1"
+  local token="$2"
+  curl -fsS -H "authorization: Bearer $token" "$url"
+}
+
 log "compose: $COMPOSE_FILE"
 log "atc: $ATC_BASE_URL"
 log "frontend: $FRONTEND_BASE_URL"
@@ -82,6 +95,12 @@ ready_start="$SECONDS"
 log "waiting for ATC /ready..."
 wait_http "$ATC_BASE_URL/ready" 60 2 || { log "ATC not ready: $ATC_BASE_URL/ready"; exit 1; }
 log "ATC ready in $((SECONDS - ready_start))s"
+
+E2E_RESET="${E2E_RESET:-0}"
+if [[ "$E2E_RESET" == "1" ]]; then
+  log "resetting ATC state..."
+  post_json_admin "$ATC_BASE_URL/v1/admin/reset" '{"confirm":"RESET","require_idle":false}' >/dev/null
+fi
 
 ui_start="$SECONDS"
 log "waiting for frontend /login..."
@@ -119,8 +138,8 @@ log "telemetry submitted in $((SECONDS - telemetry_start))s"
 conflict_start="$SECONDS"
 log "waiting for conflict to appear..."
 for ((i=1; i<=30; i++)); do
-  conflicts="$(curl -fsS "$ATC_BASE_URL/v1/conflicts" || true)"
-  count="$(python - <<PY
+  conflicts="$(get_auth "$ATC_BASE_URL/v1/conflicts" "$ATC_ADMIN_TOKEN" || true)"
+  count="$(python - "$conflicts" <<'PY'
 import json,sys
 try:
   data=json.loads(sys.argv[1])
@@ -128,7 +147,7 @@ except Exception:
   data=[]
 print(len(data) if isinstance(data,list) else 0)
 PY
-"$conflicts")"
+)"
   if [[ "$count" -gt 0 ]]; then
     log "conflict detected ($count)"
     break
@@ -145,18 +164,37 @@ log "conflict detected after $((SECONDS - conflict_start))s"
 
 geofence_start="$SECONDS"
 log "creating geofence + validating check-route"
-post_json "$ATC_BASE_URL/v1/geofences" '{"name":"E2E Zone","geofence_type":"no_fly_zone","polygon":[[33.0,-117.0],[33.0,-116.9],[33.1,-116.9],[33.1,-117.0],[33.0,-117.0]],"lower_altitude_m":0.0,"upper_altitude_m":120.0}' >/dev/null
-route_check="$(post_json "$ATC_BASE_URL/v1/geofences/check-route" '{"waypoints":[{"lat":33.05,"lon":-117.05,"altitude_m":50.0},{"lat":33.05,"lon":-116.95,"altitude_m":50.0}]}' )"
-route_conflicts="$(python - <<PY
+post_json_admin "$ATC_BASE_URL/v1/geofences" '{"name":"E2E Zone","geofence_type":"no_fly_zone","polygon":[[33.0,-117.0],[33.0,-116.9],[33.1,-116.9],[33.1,-117.0],[33.0,-117.0]],"lower_altitude_m":0.0,"upper_altitude_m":120.0}' >/dev/null
+route_check="$(post_json_admin "$ATC_BASE_URL/v1/geofences/check-route" '{"waypoints":[{"lat":33.05,"lon":-117.05,"altitude_m":50.0},{"lat":33.05,"lon":-116.95,"altitude_m":50.0}]}' )"
+route_conflicts="$(python - "$route_check" <<'PY'
 import json,sys
 payload=json.loads(sys.argv[1])
 print("true" if payload.get("conflicts") is True else "false")
 PY
-"$route_check")"
+)"
 if [[ "$route_conflicts" != "true" ]]; then
   log "expected geofence route conflict=true, got: $route_check"
   exit 1
 fi
 
 log "geofence check completed in $((SECONDS - geofence_start))s"
+
+E2E_RUN_CLI_DEMO="${E2E_RUN_CLI_DEMO:-0}"
+if [[ "$E2E_RUN_CLI_DEMO" == "1" ]]; then
+  if command -v cargo >/dev/null 2>&1; then
+    log "running atc-cli demo_scenario (cargo)..."
+    (
+      cd "$ROOT_DIR/atc-drone"
+      cargo run -p atc-cli --bin demo_scenario -- \
+        --url "$ATC_BASE_URL" \
+        --owner e2e \
+        --reset \
+        --registration-token "$ATC_REGISTRATION_TOKEN" \
+        --admin-token "$ATC_ADMIN_TOKEN"
+    )
+  else
+    log "skipping atc-cli demo_scenario (cargo not found)"
+  fi
+fi
+
 log "OK (total ${SECONDS}s)"
